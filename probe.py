@@ -123,3 +123,75 @@ def run3():
     if sh is not None:
         print(f"  {len(sh)} 行，{sh['date'].min()} ~ {sh['date'].max()}")
     print("\n请求统计:", fetch_em.STATS, "首选组合:", fetch_em._preferred)
+
+
+def run4():
+    """第四轮：数据源可行性——新浪资金流、同花顺、通达信(pytdx)。每项独立 try，互不影响。"""
+    import subprocess
+    import sys
+
+    import pandas as pd
+
+    def show(name, fn):
+        print(f"\n=== {name}")
+        t = time.time()
+        try:
+            r = fn()
+            print(f"  成功 {time.time()-t:.1f}s")
+            if isinstance(r, pd.DataFrame):
+                print(f"  形状 {r.shape} 列 {list(r.columns)[:16]}")
+                print(r.head(3).to_string()[:600])
+            elif r is not None:
+                print("  ", str(r)[:600])
+        except Exception as e:  # noqa: BLE001
+            print(f"  失败 {type(e).__name__}: {str(e)[:200]}")
+
+    base = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    sina = [
+        ("新浪 板块资金流 fenlei=0", base + "MoneyFlow.ssl_bkzj_bk?page=1&num=5&sort=netamount&asc=0&fenlei=0"),
+        ("新浪 板块资金流 fenlei=1", base + "MoneyFlow.ssl_bkzj_bk?page=1&num=5&sort=netamount&asc=0&fenlei=1"),
+        ("新浪 个股资金流排名", base + "MoneyFlow.ssl_bkzj_ssggzj?page=1&num=5&sort=netamount&asc=0&bankuai=&shichang="),
+        ("新浪 个股资金流趋势(历史)", base + "MoneyFlow.ssl_qsfx_zjlrqs?page=1&num=5&sort=opendate&asc=0&daima=sh600519"),
+        ("新浪 板块资金流趋势(历史)", base + "MoneyFlow.ssl_qsfx_lscjfb?page=1&num=5&sort=opendate&asc=0&bankuai=&shichang="),
+    ]
+    for name, url in sina:
+        def f(url=url):
+            r = requests.get(url, headers=UA, timeout=20)
+            return f"HTTP {r.status_code} 长度{len(r.text)} 开头: {r.text[:450]!r}"
+        show(name, f)
+
+    import akshare as ak
+    show("同花顺 行业资金流 即时", lambda: ak.stock_fund_flow_industry(symbol="即时"))
+    show("同花顺 行业资金流 20日排行", lambda: ak.stock_fund_flow_industry(symbol="20日排行"))
+    show("同花顺 个股资金流 即时", lambda: ak.stock_fund_flow_individual(symbol="即时"))
+
+    def tdx():
+        try:
+            import pytdx  # noqa: F401
+        except ImportError:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pytdx"], check=True)
+        from pytdx.hq import TdxHq_API
+        api = TdxHq_API()
+        out = []
+        for ip, port in (("119.147.212.81", 7709), ("112.74.214.43", 7709), ("221.231.141.60", 7709), ("101.227.73.20", 7709)):
+            try:
+                if api.connect(ip, port, time_out=8):
+                    out.append(f"{ip} 连接成功; 深圳证券数 {api.get_security_count(0)}")
+                    tr = api.get_transaction_data(1, "600519", 0, 5)
+                    out.append(f"  逐笔成交样例 {tr[:2] if tr else tr}")
+                    api.disconnect()
+                    break
+                out.append(f"{ip} 连接失败")
+            except Exception as e:  # noqa: BLE001
+                out.append(f"{ip} 异常 {type(e).__name__} {str(e)[:60]}")
+        return "\n   ".join(out)
+
+    show("通达信 pytdx 连接与逐笔成交", tdx)
+
+    show("东财 再试一次（本次出口IP）", lambda: requests.get(
+        "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=3&klt=101&secid=1.600519&fields1=f1,f2,f3,f7&fields2=f51,f52,f53",
+        timeout=20).text[:150])
+    try:
+        print("\n出口IP:", requests.get("https://api.ipify.org", timeout=10).text)
+    except Exception as e:  # noqa: BLE001
+        print("出口IP 查询失败", e)
