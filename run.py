@@ -163,11 +163,14 @@ def run_demo():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe"])
+    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "probe2"])
     m = ap.parse_args().mode
     if m == "probe":
         import probe
         probe.run()
+    elif m == "probe2":
+        import probe
+        probe.run2()
     elif m == "backfill":
         import backfill_stocks
         backfill_stocks.run()
