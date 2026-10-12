@@ -22,9 +22,8 @@ STATS = {"ok": 0, "fail": 0, "last_err": ""}
 def _combos(family):
     out = []
     for host in HOSTS[family]:
-        for scheme in ("https", "http"):
-            for hi in (0, 1):
-                out.append((host, scheme, hi))
+        for hi in (0, 1):
+            out.append((host, "https", hi))
     pref = _preferred.get(family)
     if pref in out:
         out.remove(pref)
@@ -32,46 +31,66 @@ def _combos(family):
     return out
 
 
-def get_json(family, path, params, timeout=20):
+def get_json(family, path, params, timeout=25, rounds=4):
+    """每一轮把所有组合试一遍；整轮失败后退避等待（2/5/10秒）再来，应对网关限流。"""
     last = None
-    for combo in _combos(family):
-        host, scheme, hi = combo
-        url = f"{scheme}://{host}{path}"
-        try:
-            r = _session.get(url, params=params, headers=(UA if hi else {}), timeout=timeout)
-            if r.status_code != 200:
-                raise RuntimeError(f"HTTP {r.status_code}")
-            j = r.json()
-            _preferred[family] = combo
-            STATS["ok"] += 1
-            return j
-        except Exception as e:  # noqa: BLE001
-            last = f"{host} {scheme} {'UA' if hi else '默认头'}: {type(e).__name__} {str(e)[:60]}"
-            time.sleep(0.3)
+    for rd in range(rounds):
+        for combo in _combos(family):
+            host, scheme, hi = combo
+            url = f"{scheme}://{host}{path}"
+            try:
+                r = _session.get(url, params=params, headers=(UA if hi else {}), timeout=timeout)
+                if r.status_code != 200:
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                j = r.json()
+                _preferred[family] = combo
+                STATS["ok"] += 1
+                return j
+            except Exception as e:  # noqa: BLE001
+                last = f"{host} {'UA' if hi else '默认头'}: {type(e).__name__} {str(e)[:60]}"
+                time.sleep(0.4)
+        if rd < rounds - 1:
+            time.sleep((2, 5, 10)[rd])
     STATS["fail"] += 1
     STATS["last_err"] = last
-    raise RuntimeError(f"东财请求失败 {path} 最后错误: {last}")
+    raise RuntimeError(f"东财请求失败 {path}（重试{rounds}轮）最后错误: {last}")
 
 
-def _clist(fs, fields, fid="f62", pz=100, max_pages=200, sleep=0.12):
-    """分页取 clist 列表，返回 diff 记录列表。"""
-    rows, total, pn = [], None, 1
-    while pn <= max_pages:
+def _clist(fs, fields, fid="f62", pz=100, max_pages=200, sleep=0.6, big=None):
+    """取 clist 列表，返回 diff 记录列表（按代码去重）。
+    先用大页（big）一次要尽量多；若服务器把页大小压回更小，则按它实际给的页大小继续翻页。"""
+    def page(pn, size):
         j = get_json("push2", "/api/qt/clist/get", {
-            "pn": pn, "pz": pz, "po": 1, "np": 1, "fltt": 2, "invt": 2,
+            "pn": pn, "pz": size, "po": 1, "np": 1, "fltt": 2, "invt": 2,
             "fid": fid, "fs": fs, "fields": fields})
         d = j.get("data") or {}
         diff = d.get("diff") or []
         if isinstance(diff, dict):
             diff = list(diff.values())
-        if total is None:
-            total = d.get("total", 0)
-        rows += diff
-        if not diff or len(rows) >= total:
-            break
-        pn += 1
+        return diff, d.get("total", 0)
+
+    size = big or pz
+    rows, total = page(1, size)
+    if big and total and len(rows) < min(big, total):
+        size = max(len(rows), 1)            # 服务器限制了页大小：之后用同样的页大小翻页
+        if size != big:
+            rows, total = page(1, size)     # 用实际页大小重取第1页，保证翻页偏移一致
+    pn = 2
+    while len(rows) < total and pn <= max_pages:
         time.sleep(sleep)
-    return rows
+        diff, _ = page(pn, size)
+        if not diff:
+            break
+        rows += diff
+        pn += 1
+    seen, out = set(), []
+    for r in rows:
+        k = r.get("f12")
+        if k not in seen:
+            seen.add(k)
+            out.append(r)
+    print(f"  [东财列表] 取到 {len(out)}/{total} 条，页大小 {size}")
+    return out
 
 
 def _num(x):
@@ -83,7 +102,7 @@ def _num(x):
 
 def industry_list():
     """行业板块今日资金流。返回 code, name, pct_chg, net, ratio(主力净占比%)。"""
-    rows = _clist("m:90+t:2", "f12,f14,f3,f62,f184")
+    rows = _clist("m:90+t:2", "f12,f14,f3,f62,f184", big=1000)
     return pd.DataFrame({
         "code": [r.get("f12") for r in rows], "name": [r.get("f14") for r in rows],
         "pct_chg": [_num(r.get("f3")) for r in rows], "net": [_num(r.get("f62")) for r in rows],
@@ -100,7 +119,7 @@ def stock_today():
     """全市场个股今日主力净流入。返回 code, name, pct_chg, net。"""
     fs = ("m:0+t:6+f:!2,m:0+t:13+f:!2,m:0+t:80+f:!2,m:1+t:2+f:!2,"
           "m:1+t:23+f:!2,m:0+t:7+f:!2,m:1+t:3+f:!2")
-    rows = _clist(fs, "f12,f14,f3,f62", sleep=0.1)
+    rows = _clist(fs, "f12,f14,f3,f62", big=6000)
     return pd.DataFrame({
         "code": [str(r.get("f12")).zfill(6) for r in rows], "name": [r.get("f14") for r in rows],
         "pct_chg": [_num(r.get("f3")) for r in rows], "net": [_num(r.get("f62")) for r in rows]})
