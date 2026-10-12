@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>行业资金四象限</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2230;--mute:#6b7385;--line:#e4e7ec;
+--in:#d6362f;--out:#1a9a5b;--in-bg:#fdecea;--out-bg:#e7f6ee;--warn:#b26a00;--warn-bg:#fff4e0;--accent:#2f5fd0;
+--pt:#2a78d6;--grid:#e1e0d9;--axis:#c3c2b7;--axtxt:#898781}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b1f29;--ink:#e8ebf2;--mute:#98a0b3;--line:#2a3040;
+--in:#ff6b63;--out:#3ccf8e;--in-bg:#3a1f1f;--out-bg:#17332a;--warn:#f0b04a;--warn-bg:#3a2e16;--accent:#7aa2ff;
+--pt:#3987e5;--grid:#2c2c2a;--axis:#383835;--axtxt:#898781}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0}
+.meta{color:var(--mute);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--warn-bg);color:var(--warn)}
+.badge.final{background:var(--out-bg);color:var(--out)}
+.note{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;color:var(--mute);font-size:13px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
+.panel h2{font-size:16px;margin:0}
+.sub{color:var(--mute);font-size:13px;margin:2px 0 8px}
+#chart{position:relative}
+#chart svg{display:block;width:100%;height:auto;touch-action:manipulation}
+.pt{cursor:pointer;outline:none}
+.pt:focus-visible .dot{stroke:var(--ink)}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap;display:none;z-index:4}
+.tip .n{color:var(--mute);margin-bottom:2px}
+.tip .v{font-size:14px;font-weight:600}
+.gw{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;color:var(--mute)}
+.gbar{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:18px;font-size:13px;cursor:pointer}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+section{margin:18px 0}
+section h3{font-size:15px;margin:0 0 2px}
+section .tag{color:var(--mute);font-size:13px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.panel .card{border:0;padding:0}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 8px}
+.name{font-weight:600;font-size:16px;white-space:nowrap;flex-shrink:0}
+.today{font-size:12px;color:var(--mute);white-space:normal}
+.tr{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:1 1 280px;min-width:0;text-align:right}
+@media (max-width:520px){.tr{align-items:flex-start;text-align:left;flex-basis:100%}}
+.in{color:var(--in)}.out{color:var(--out)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{font-size:12px;padding:2px 8px;border-radius:8px;background:var(--bg)}
+.chip.in{background:var(--in-bg)}.chip.out{background:var(--out-bg)}
+.etf{font-size:12px;margin-top:8px;color:var(--mute)}
+.etf.diverge{color:var(--warn)}
+.stitle{font-size:12px;color:var(--mute);margin-bottom:6px}
+.cov{font-size:11px;color:var(--warn);margin-top:4px}
+.stocks{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:13px}
+.srow{display:flex;justify-content:space-between;gap:8px}
+.stocks small{color:var(--mute)}
+.empty{color:var(--mute);font-size:13px}
+footer{color:var(--mute);font-size:12px;margin:24px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>行业资金四象限</h1>
+<div class="meta" id="meta"></div>
+<div class="note">
+口径：行业主力净流入（东方财富大单口径，估算值）÷ 同期成交额。红色=流入，绿色=流出。
+短期=近20日，长期=近250日（历史不足时用120日，详情里会标注）。个股TOP3=行业内个股在所选窗口（5/20/60/120/250日）的主力净流入合计前三，可点击切换。
+盘中数据为"今日暂计"，盘后定稿；ETF验证为T+1。本页是资金流向观察工具，不构成买卖建议。
+</div>
+
+<div class="panel">
+  <h2>四象限图</h2>
+  <div class="sub">横轴＝长期（250日；不足用120日）主力净流入占同期成交额比例，纵轴＝短期（20日）主力净流入占同期成交额比例，每个点是一个行业。点击圆点查看详情。</div>
+  <div id="chart"></div>
+</div>
+
+<div class="panel" id="detailPanel">
+  <div class="gw"><span>周期（行业金额/涨幅与个股TOP3同步切换）</span><span class="gbar" id="gwin"></span></div>
+  <div id="detail" style="margin-top:10px"></div>
+</div>
+
+<footer id="foot"></footer>
+</div>
+<script>
+const DATA = {"mode": "intraday", "trade_date": "2026-10-12", "updated_at": "2026-10-12 14:53", "history_days": 1, "stock_default_window": 20, "insufficient": ["IT服务Ⅱ", "IT服务Ⅲ", "LED", "一般零售", "专业工程", "专业服务", "专业连锁Ⅱ", "专业连锁Ⅲ", "专用设备", "个护小家电", "个护用品", "中药Ⅱ", "中药Ⅲ", "乘用车", "乳品", "互联网电商", "交通运输", "产业地产", "人力资源服务", "人工景区", "仓储物流", "仪器仪表", "休闲食品", "会展服务", "传媒", "住宅开发", "体外诊断", "体育Ⅱ", "体育Ⅲ", "保健品", "保险Ⅱ", "保险Ⅲ", "信托", "元件", "光伏主材", "光伏加工设备", "光伏发电", "光伏电池组件", "光伏设备", "光伏辅材", "光学元件", "光学光电子", "公交", "公用事业", "公路货运", "其他专业工程", "其他专业服务", "其他专用设备", "其他养殖", "其他农产品加工", "其他化学制品", "其他化学原料", "其他化学纤维", "其他医疗服务", "其他塑料制品", "其他家居用品", "其他家电Ⅱ", "其他家电Ⅲ", "其他小金属", "其他建材Ⅲ", "其他数字媒体", "其他橡胶制品", "其他汽车零部件", "其他生物制品", "其他电子Ⅱ", "其他电子Ⅲ", "其他电源设备Ⅱ", "其他电源设备Ⅲ", "其他石化", "其他种植业", "其他纺织", "其他能源发电", "其他自动化设备", "其他计算机设备", "其他运输设备", "其他通信设备", "其他通用设备", "其他酒类", "其他金属新材料", "其他饰品", "其他黑色家电", "养殖业", "军工电子Ⅱ", "军工电子Ⅲ", "农业综合Ⅱ", "农业综合Ⅲ", "农产品加工", "农化制品", "农商行Ⅲ", "农林牧渔", "农用机械", "农药", "冰洗", "冶钢原料", "冶钢辅料", "出版", "分立器件", "制冷空调设备", "动力煤", "动物保健Ⅱ", "动物保健Ⅲ", "包装印刷", "化妆品", "化妆品制造及其他", "化学制剂", "化学制品", "化学制药", "化学原料", "化学工程", "化学纤维", "医疗器械", "医疗服务", "医疗研发外包", "医疗美容", "医疗耗材", "医疗设备", "医美服务", "医美耗材", "医药商业", "医药流通", "医药生物", "医院", "半导体", "半导体材料", "半导体设备", "卫浴制品", "卫浴电器", "印制电路板", "印刷", "印刷包装机械", "印染", "原料药", "原材料供应链服务", "厨卫电器", "厨房小家电", "厨房电器", "合成树脂", "品牌化妆品", "品牌消费电子", "商业地产", "商业物业经营", "商用车", "商用载客车", "商用载货车", "商贸零售", "啤酒", "园林工程", "固废治理", "国有大型银行Ⅲ", "国防军工", "国际工程", "图片媒体", "地面兵装Ⅱ", "地面兵装Ⅲ", "垂直应用软件", "城商行Ⅲ", "培训教育", "基建市政工程", "基础化工", "基础建设", "塑料", "塑料包装", "复合肥", "多业态零售", "多元金融", "大众出版", "大宗用纸", "大气治理", "娱乐用品", "学历教育", "安防设备", "定制家居", "宠物食品", "家居用品", "家用电器", "家电零部件Ⅱ", "家电零部件Ⅲ", "家纺", "小家电", "小金属", "工业金属", "工控设备", "工程咨询服务Ⅱ", "工程咨询服务Ⅲ", "工程机械", "工程机械器件", "工程机械整机", "广告媒体", "广告营销", "底盘与发动机系统", "建筑材料", "建筑装饰", "彩电", "影视动漫制作", "影视院线", "快递", "成品家居", "房产租赁经纪", "房地产", "房地产开发", "房地产服务", "房地产综合服务", "房屋建设Ⅱ", "房屋建设Ⅲ", "摩托车", "摩托车及其他", "改性塑料", "教育", "教育出版", "教育运营及其他", "数字媒体", "数字芯片设计", "文化用品", "文娱用品", "文字媒体", "旅游及景区", "旅游综合", "旅游零售Ⅱ", "旅游零售Ⅲ", "无机盐", "普钢", "有机硅", "有色金属", "服装家纺", "期货", "机器人", "机场", "机床工具", "机械设备", "板材", "林业Ⅱ", "林业Ⅲ", "果蔬加工", "核力发电", "检测服务", "棉纺", "楼宇设备", "模拟芯片设计", "横向通用软件", "橡胶", "橡胶助剂", "民爆制品", "氟化工", "氨纶", "氮肥", "氯碱", "水产养殖", "水产饲料", "水力发电", "水务及水治理", "水泥", "水泥制品", "水泥制造", "汽车", "汽车服务", "汽车电子电气系统", "汽车经销商", "汽车综合服务", "汽车零部件", "油品石化贸易", "油服工程", "油气及炼化工程", "油气开采Ⅱ", "油气开采Ⅲ", "油田服务", "洗护用品", "海洋捕捞", "涂料", "涂料油墨", "消费电子", "消费电子零部件及组装", "涤纶", "清洁小家电", "渔业", "港口", "游戏Ⅱ", "游戏Ⅲ", "激光设备", "火力发电", "火电设备", "炭黑", "炼化及贸易", "炼油化工", "烘焙食品", "热力服务", "焦炭Ⅱ", "焦炭Ⅲ", "焦煤", "煤化工", "煤炭", "煤炭开采", "照明设备Ⅱ", "照明设备Ⅲ", "熟食", "燃料电池", "燃气Ⅱ", "燃气Ⅲ", "物业管理", "物流", "特种纸", "特钢Ⅱ", "特钢Ⅲ", "环保", "环保设备Ⅱ", "环保设备Ⅲ", "环境治理", "玻璃制造", "玻璃玻纤", "玻纤制造", "瓷砖地板", "生活用纸", "生物制品", "生猪养殖", "电信运营商", "电力", "电力设备", "电动乘用车", "电商服务", "电子", "电子化学品Ⅱ", "电子化学品Ⅲ", "电工仪器仪表", "电机Ⅱ", "电机Ⅲ", "电池", "电池化学品", "电网自动化设备", "电网设备", "电能综合服务", "电视广播Ⅱ", "电视广播Ⅲ", "畜禽饲料", "疫苗", "白色家电", "白酒Ⅱ", "白酒Ⅲ", "白银", "百货", "石油石化", "硅料硅片", "磁性材料", "磨具磨料", "磷肥及磷化工", "社会服务", "种子", "种植业", "租赁", "稀土", "空调", "端到端供应链服务", "管材", "粘胶", "粮油加工", "粮食种植", "纯碱", "纸包装", "纺织制造", "纺织化学制品", "纺织服装设备", "纺织服饰", "纺织鞋类制造", "线下药店", "线缆部件及其他", "综合", "综合Ⅱ", "综合Ⅲ", "综合乘用车", "综合包装", "综合环境治理", "综合电力设备商", "综合电商", "美容护理", "耐火材料", "聚氨酯", "肉制品", "肉鸡养殖", "股份制银行Ⅲ", "胶黏剂及胶带", "能源及重型设备", "能源金属", "膜材料", "自动化设备", "自然景区", "航天装备Ⅱ", "航天装备Ⅲ", "航海装备Ⅱ", "航海装备Ⅲ", "航空机场", "航空装备Ⅱ", "航空装备Ⅲ", "航空运输", "航运", "航运港口", "营销代理", "蓄电池及其他电池", "血液制品", "被动元件", "装修建材", "装修装饰Ⅱ", "装修装饰Ⅲ", "视频媒体", "计算机", "计算机设备", "证券Ⅱ", "证券Ⅲ", "诊断服务", "调味发酵品Ⅱ", "调味发酵品Ⅲ", "贵金属", "贸易Ⅱ", "贸易Ⅲ", "资产管理", "超市", "跨境物流", "跨境电商", "车身附件及饰件", "轨交设备Ⅱ", "轨交设备Ⅲ", "轮胎轮毂", "软件开发", "软饮料", "轻工制造", "辅料", "输变电设备", "运动服装", "逆变器", "通信", "通信工程及服务", "通信应用增值服务", "通信服务", "通信线缆及配套", "通信终端及配件", "通信网络设备及器件", "通信设备", "通用设备", "造纸", "配电设备", "酒店", "酒店餐饮", "金属制品", "金属包装", "金属新材料", "金融信息服务", "金融控股", "钛白粉", "钟表珠宝", "钢结构", "钢铁", "钢铁管材", "钨", "钴", "钼", "钾肥", "铁矿石", "铁路公路", "铁路运输", "铅锌", "铜", "铝", "银行", "银行Ⅱ", "锂", "锂电专用设备", "锂电池", "锦纶", "镍", "长材", "门户网站", "防水材料", "院线", "集成电路制造", "集成电路封测", "零食", "非白酒", "非运动服装", "非金属材料Ⅱ", "非金属材料Ⅲ", "非银金融", "面板", "鞋帽及其他", "预加工食品", "风力发电", "风电整机", "风电设备", "风电零部件", "食品加工", "食品及饲料添加剂", "食品饮料", "食用菌", "餐饮", "饮料乳品", "饰品", "饲料", "高速公路", "黄金", "黑色家电"], "quadrants": {"q1": [], "q2": [], "q3": [], "q4": []}};
+const QMETA = {"q1": {"title": "短期流入、长期流入", "tag": "持续承接，可信度高"}, "q2": {"title": "短期流入、长期流出", "tag": "疑似反弹承接或派发"}, "q3": {"title": "短期流出、长期流入", "tag": "回调中资金未撤，值得跟踪"}, "q4": {"title": "短期流出、长期流出", "tag": "持续撤离"}};
+const $ = id => document.getElementById(id);
+function h(tag, cls, text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+const fmt = (v,d=2) => v==null ? "—" : (v>0?"+":"")+v.toFixed(d)+"%";
+const cls = v => v==null ? "" : (v>0 ? "in" : v<0 ? "out" : "");
+const order = ["q1","q2","q3","q4"];
+const WINS = [5,20,60,120,250];
+let curWin = DATA.stock_default_window || 20;
+let detailReg = [];      // 当前详情卡的周期切换函数
+
+/* ---------- 卡片（选中行业详情） ---------- */
+const signed = (v,d=2) => v==null ? "—" : (v>0?"+":"")+v.toFixed(d);
+const amt = v => v==null ? "" : " · "+signed(v)+"亿";
+function card(it, reg){
+  const c = h("div","card");
+  const top = h("div","top");
+  top.append(h("span","name",it.industry));
+  const right = h("div","tr");
+  const td = h("span","today");
+  td.append("今日行业指数涨幅 "); td.append(h("span",cls(it.pct_chg),fmt(it.pct_chg)));
+  if(it.today_net!=null){td.append(" · 今日主力净流入 "); td.append(h("span",cls(it.today_net),signed(it.today_net)+"亿"));}
+  const tw = h("div","tw");                   // 跟随周期变化：所选周期的三项指标，每项写全名
+  right.append(td); right.append(tw); top.append(right); c.append(top);
+
+
+  if(it.etf){c.append(h("div","etf "+(it.etf.status==="diverge"?"diverge":""),"ETF验证："+it.etf.text));}
+
+  let stitle, lst, note;
+  if(it.stocks){
+    const s = h("div","stocks");
+    stitle = h("div","stitle",""); lst = h("div",""); note = h("div","cov");
+    s.append(stitle); s.append(lst); s.append(note);
+    c.append(s);
+  }
+  function setWin(w){
+    tw.replaceChildren();
+    const n = it.nets[w];
+    [[w+"日行业指数涨幅", it.pcts[w], fmt(it.pcts[w])],
+     [w+"日主力净流入", n, signed(n)+"亿"],
+     [w+"日主力净流入占同期成交额比例", it.ratios[w], fmt(it.ratios[w])]].forEach(([lab,v,txt])=>{
+      const line = h("div","today"); line.append(lab+" "); line.append(h("span",cls(v),txt)); tw.append(line);
+    });
+    if(!it.stocks) return;
+    stitle.textContent = "行业内个股 · "+w+"日主力净流入TOP3";
+    lst.replaceChildren();
+    const rows = it.stocks[w] || [];
+    if(!rows.length) lst.append(h("div","empty","暂无数据"));
+    rows.forEach(x=>{
+      const row = h("div","srow");
+      const l = h("span",""); l.append(x.name+" "); l.append(h("small","",x.code)); row.append(l);
+      const r = h("span","");
+      r.append(h("span",cls(x.net),signed(x.net)+"亿"));
+      r.append(" "); r.append(h("small",cls(x.pct_chg),"个股今日涨幅 "+fmt(x.pct_chg)));
+      row.append(r); lst.append(row);
+    });
+    const have = it.stocks.cov[w];
+    note.textContent = have < w*0.9 ? "个股数据仅累积 "+have+" 日，未满 "+w+" 日窗口，排名仅供参考" : "";
+  }
+  reg.push(setWin);
+  setWin(curWin);
+  return c;
+}
+
+/* ---------- 周期切换（唯一入口） ---------- */
+const gbtns = {};
+WINS.forEach(w=>{
+  const b = h("button","tab"+(w===curWin?" on":""),w+"日");
+  b.onclick = () => {
+    curWin = w;
+    WINS.forEach(k=>gbtns[k].classList.toggle("on",k===w));
+    detailReg.forEach(f=>f(w));
+  };
+  gbtns[w]=b; $("gwin").append(b);
+});
+
+/* ---------- 顶部信息 ---------- */
+const meta = $("meta");
+meta.append(h("span","","交易日 "+DATA.trade_date));
+meta.append(h("span","","更新于 "+DATA.updated_at+"（北京时间）"));
+meta.append(h("span","badge "+(DATA.mode==="final"?"final":""), DATA.mode==="final"?"盘后定稿":"盘中暂计"));
+meta.append(h("span","","已累积历史 "+DATA.history_days+" 个交易日"));
+$("foot").textContent = DATA.insufficient.length
+  ? "历史数据不足、暂未分类的行业："+DATA.insufficient.join("、")
+  : "全部行业均已分类。";
+
+/* ---------- 四象限图 ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!==undefined)e.textContent=text;return e}
+const ALL = [];
+order.forEach(q=>DATA.quadrants[q].forEach(it=>ALL.push({q,it})));
+let selected = ALL.length ? ALL[0] : null;
+let hover = null;
+
+function ticksFor(lo, hi, target){
+  const raw=(hi-lo)/target, p=Math.pow(10,Math.floor(Math.log10(raw))), f=raw/p;
+  const st=(f<1.5?1:f<3?2:f<7?5:10)*p, out=[];
+  for(let v=Math.ceil(lo/st-1e-9)*st; v<=hi+1e-9; v+=st) out.push(Math.round(v/st)*st);
+  return {st, out};
+}
+const tickText = (v,st) => (v>0?"+":"")+v.toFixed(st>=1?0:(st>=0.1?1:2))+"%";
+
+function showDetail(sel, scroll){
+  const d = $("detail"); d.replaceChildren(); detailReg = [];
+  if(!sel){d.append(h("div","empty","暂无已分类的行业"));return}
+  const head = h("div","sub", QMETA[sel.q].title+"（"+QMETA[sel.q].tag+"）");
+  d.append(head);
+  d.append(card(sel.it, detailReg));
+  if(scroll) $("detailPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function draw(){
+  const wrap = $("chart"); wrap.replaceChildren();
+  if(!ALL.length){wrap.append(h("div","empty","暂无已分类的行业"));return}
+  const W = Math.max(300, wrap.clientWidth || 360);
+  const H = W < 520 ? Math.max(380, Math.round(W*1.05)) : Math.max(440, Math.min(560, Math.round(W*0.55)));
+  const m = {l: W<520?58:60, r:14, t:14, b:46};
+  const pw = W-m.l-m.r, ph = H-m.t-m.b;
+
+  const xs = ALL.map(a=>a.it.long), ys = ALL.map(a=>a.it.short);
+  const padOf = (lo,hi)=>{const sp=(hi-lo)||1; return sp*0.1};
+  let x0=Math.min(0,...xs), x1=Math.max(0,...xs), y0=Math.min(0,...ys), y1=Math.max(0,...ys);
+  const px=padOf(x0,x1), py=padOf(y0,y1); x0-=px; x1+=px; y0-=py; y1+=py;
+  const X = v => m.l + (v-x0)/(x1-x0)*pw;
+  const Y = v => m.t + (1-(v-y0)/(y1-y0))*ph;
+
+  const svg = s("svg",{viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"行业资金四象限散点图：横轴长期，纵轴短期"});
+  const xt = ticksFor(x0,x1,W<520?4:6), yt = ticksFor(y0,y1,W<520?5:6);
+
+  // 网格与刻度（细实线、低对比）
+  xt.out.forEach(v=>{
+    svg.append(s("line",{x1:X(v),x2:X(v),y1:m.t,y2:m.t+ph,stroke:"var(--grid)","stroke-width":1}));
+    svg.append(s("text",{x:X(v),y:m.t+ph+16,"text-anchor":"middle","font-size":11,fill:"var(--axtxt)"},tickText(v,xt.st)));
+  });
+  yt.out.forEach(v=>{
+    svg.append(s("line",{x1:m.l,x2:m.l+pw,y1:Y(v),y2:Y(v),stroke:"var(--grid)","stroke-width":1}));
+    svg.append(s("text",{x:m.l-6,y:Y(v)+4,"text-anchor":"end","font-size":11,fill:"var(--axtxt)"},tickText(v,yt.st)));
+  });
+  // 零轴（分隔四个象限）
+  svg.append(s("line",{x1:X(0),x2:X(0),y1:m.t,y2:m.t+ph,stroke:"var(--axis)","stroke-width":1.5}));
+  svg.append(s("line",{x1:m.l,x2:m.l+pw,y1:Y(0),y2:Y(0),stroke:"var(--axis)","stroke-width":1.5}));
+  // 轴标题
+  svg.append(s("text",{x:m.l+pw/2,y:H-6,"text-anchor":"middle","font-size":12,fill:"var(--mute)"},(W<520?"长期：主力净流入占同期成交额比例（250日）→":"长期：主力净流入占同期成交额比例（250日，不足用120日）→ 流入")));
+  svg.append(s("text",{x:11,y:m.t+ph/2,"text-anchor":"middle","font-size":12,fill:"var(--mute)",transform:"rotate(-90 11 "+(m.t+ph/2)+")"},(W<520?"短期：主力净流入占同期成交额比例（20日）→":"短期：主力净流入占同期成交额比例（20日）→ 流入")));
+
+  // 象限角标：q1右上 q2左上 q3右下 q4左下
+  const cnt = q => DATA.quadrants[q].length;
+  const top = m.t, bot = m.t+ph;
+  const corners = [   // [象限, x, 第一行y, 第二行y, 对齐]；第一行=象限名称，第二行=注释
+    ["q1", m.l+pw-6, top+14, top+27, "end"], ["q2", m.l+6, top+14, top+27, "start"],
+    ["q3", m.l+pw-6, bot-21, bot-8, "end"], ["q4", m.l+6, bot-21, bot-8, "start"]];
+  const reserved = [];
+  corners.forEach(([q,x,y1,y2,a])=>{
+    const t1 = QMETA[q].title+"("+cnt(q)+")", t2 = "（"+QMETA[q].tag+"）";
+    svg.append(s("text",{x,y:y1,"text-anchor":a,"font-size":11,fill:"var(--mute)","font-weight":600},t1));
+    svg.append(s("text",{x,y:y2,"text-anchor":a,"font-size":11,fill:"var(--mute)"},t2));
+    const w = Math.max(t1.length,t2.length)*11;
+    reserved.push({x0:a==="end"?x-w:x, x1:a==="end"?x:x+w, y0:y1-13, y1:y2+3});
+  });
+
+  // 选择性标注：每个象限里离原点最远的前3个 + 当前选中
+  const nx = v=>v/((x1-x0)||1), ny = v=>v/((y1-y0)||1);
+  const cand = [];
+  order.forEach(q=>{
+    ALL.filter(a=>a.q===q).sort((a,b)=>Math.hypot(nx(b.it.long),ny(b.it.short))-Math.hypot(nx(a.it.long),ny(a.it.short))).slice(0,3).forEach(a=>cand.push(a));
+  });
+  if(selected && !cand.includes(selected)) cand.unshift(selected);
+  const placed = reserved.slice(), labels = new Map();
+  const pointRects = ALL.map(a=>({a,x0:X(a.it.long)-7,x1:X(a.it.long)+7,y0:Y(a.it.short)-7,y1:Y(a.it.short)+7}));
+  const overlap = (r,p)=>!(r.x1<p.x0||r.x0>p.x1||r.y1<p.y0||r.y0>p.y1);
+  cand.sort((a,b)=>(b===selected)-(a===selected));
+  cand.forEach(a=>{
+    const cx=X(a.it.long), cy=Y(a.it.short), w=a.it.industry.length*11+2;
+    const opts = [
+      {r:{x0:cx+8,x1:cx+8+w,y0:cy-7,y1:cy+7}, t:{x:cx+8,y:cy+4,anchor:"start"}},
+      {r:{x0:cx-8-w,x1:cx-8,y0:cy-7,y1:cy+7}, t:{x:cx-8,y:cy+4,anchor:"end"}},
+      {r:{x0:cx-w/2,x1:cx+w/2,y0:cy-22,y1:cy-8}, t:{x:cx,y:cy-12,anchor:"middle"}},
+      {r:{x0:cx-w/2,x1:cx+w/2,y0:cy+8,y1:cy+22}, t:{x:cx,y:cy+19,anchor:"middle"}}];
+    for(const o of opts){
+      const inside = o.r.x0>=m.l && o.r.x1<=m.l+pw && o.r.y0>=m.t && o.r.y1<=m.t+ph;
+      const hit = placed.some(p=>overlap(o.r,p)) || pointRects.some(p=>p.a!==a && overlap(o.r,p));
+      if(inside && !hit){placed.push(o.r); labels.set(a,o.t); break}
+    }
+  });
+
+  // 点（2px 表面色环；选中=墨色描边；悬停略放大）
+  const g = s("g",{});
+  ALL.forEach(a=>{
+    const cx=X(a.it.long), cy=Y(a.it.short);
+    const on = a===selected, hv = a===hover;
+    const grp = s("g",{class:"pt",tabindex:0,role:"button","aria-label":a.it.industry+"，短期"+fmt(a.it.short)+"，长期"+fmt(a.it.long)});
+    grp.append(s("circle",{cx,cy,r:14,fill:"transparent"}));           // 24px+ 的点击/悬停范围
+    grp.append(s("circle",{class:"dot",cx,cy,r:on||hv?6.5:4.5,fill:"var(--pt)",stroke:on?"var(--ink)":"var(--card)","stroke-width":2}));
+    const dot = grp.querySelector(".dot");
+    grp.addEventListener("pointerenter",()=>{hover=a;dot.setAttribute("r",6.5);tip(a,cx,cy)});
+    grp.addEventListener("pointerleave",()=>{hover=null;if(a!==selected)dot.setAttribute("r",4.5);hideTip()});
+    grp.addEventListener("focus",()=>tip(a,cx,cy));
+    grp.addEventListener("blur",hideTip);
+    grp.addEventListener("click",()=>choose(a));
+    grp.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();choose(a)}});
+    g.append(grp);
+  });
+  svg.append(g);
+  labels.forEach((p,a)=>{
+    svg.append(s("text",{x:p.x,y:p.y,"text-anchor":p.anchor,"font-size":11,fill:"var(--ink)","pointer-events":"none","paint-order":"stroke",stroke:"var(--card)","stroke-width":3,"stroke-linejoin":"round"},a.it.industry));
+  });
+  wrap.append(svg);
+
+  const tipEl = h("div","tip"); wrap.append(tipEl);
+  function tip(a,cx,cy){
+    tipEl.replaceChildren();
+    tipEl.append(h("div","n",a.it.industry+" · "+QMETA[a.q].title));
+    const v1=h("div","v",""); v1.append("20日主力净流入占同期成交额比例 "); v1.append(h("span",cls(a.it.short),fmt(a.it.short))); tipEl.append(v1);
+    const v2=h("div","v",""); v2.append(a.it.long_basis+"日主力净流入占同期成交额比例 "); v2.append(h("span",cls(a.it.long),fmt(a.it.long))); tipEl.append(v2);
+    tipEl.style.display="block";
+    const sx = cx/W*wrap.clientWidth, sy = cy/H*wrap.clientHeight;
+    const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    let left = sx+12; if(left+tw>wrap.clientWidth) left = sx-12-tw; if(left<0) left=0;
+    let topv = sy-th-10; if(topv<0) topv = sy+12;
+    tipEl.style.left = left+"px"; tipEl.style.top = topv+"px";
+  }
+  function hideTip(){tipEl.style.display="none"}
+}
+
+function choose(a){selected=a; draw(); showDetail(a,true)}
+
+draw(); showDetail(selected,false);
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(draw,120)});
+</script>
+</body>
+</html>
