@@ -195,3 +195,99 @@ def run4():
         print("\n出口IP:", requests.get("https://api.ipify.org", timeout=10).text)
     except Exception as e:  # noqa: BLE001
         print("出口IP 查询失败", e)
+
+
+def run5():
+    """第五轮：新浪方案的关键参数——历史深度、字段含义、行业成分、连续请求稳定性。"""
+    import json as _json
+
+    base = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+
+    def get(path, **params):
+        r = requests.get(base + path, params=params, headers=UA, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
+    def step(name, fn):
+        print(f"\n=== {name}")
+        t = time.time()
+        try:
+            fn()
+            print(f"  (耗时 {time.time()-t:.1f}s)")
+        except Exception as e:  # noqa: BLE001
+            print(f"  失败 {type(e).__name__}: {str(e)[:200]}")
+
+    def depth():
+        for num in (100, 300, 1000):
+            d = get("MoneyFlow.ssl_qsfx_zjlrqs", page=1, num=num, sort="opendate", asc=0, daima="sh600519")
+            print(f"  num={num}: 返回 {len(d)} 行，日期 {d[-1]['opendate'] if d else None} ~ {d[0]['opendate'] if d else None}")
+        print("  第1行完整字段:", _json.dumps(d[0], ensure_ascii=False))
+        d2 = get("MoneyFlow.ssl_qsfx_zjlrqs", page=2, num=100, sort="opendate", asc=0, daima="sh600519")
+        print(f"  page=2,num=100: {len(d2)} 行，起始日期 {d2[0]['opendate'] if d2 else None}")
+    step("个股资金流趋势：历史深度（贵州茅台）", depth)
+
+    def other_markets():
+        for code in ("sz000001", "sz300750", "sh688981", "bj430047"):
+            try:
+                d = get("MoneyFlow.ssl_qsfx_zjlrqs", page=1, num=300, sort="opendate", asc=0, daima=code)
+                print(f"  {code}: {len(d)} 行 {d[-1]['opendate'] if d else ''}~{d[0]['opendate'] if d else ''}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {code}: 失败 {type(e).__name__}")
+    step("其他板块股票历史", other_markets)
+
+    def rank_page():
+        for num in (100, 500):
+            d = get("MoneyFlow.ssl_bkzj_ssggzj", page=1, num=num, sort="netamount", asc=0, bankuai="", shichang="")
+            print(f"  num={num}: 返回 {len(d)} 行")
+        print("  第1行完整字段:", _json.dumps(d[0], ensure_ascii=False))
+        d3 = get("MoneyFlow.ssl_bkzj_ssggzj", page=60, num=100, sort="netamount", asc=0, bankuai="", shichang="")
+        print(f"  page=60,num=100: {len(d3)} 行（>0说明总数超过5900）")
+    step("个股资金流排名：页大小与字段", rank_page)
+
+    def boards():
+        d = get("MoneyFlow.ssl_bkzj_bk", page=1, num=200, sort="netamount", asc=0, fenlei=0)
+        print(f"  新浪行业板块数: {len(d)}")
+        print("  全部:", "、".join(f"{x['name']}({x['category']})" for x in d)[:2500])
+        print("  第1行完整字段:", _json.dumps(d[0], ensure_ascii=False))
+    step("新浪行业板块列表", boards)
+
+    def cons():
+        for node in ("new_jrhy", "new_cmyl"):
+            r = requests.get("https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData",
+                             params={"page": 1, "num": 100, "sort": "symbol", "asc": 1, "node": node, "symbol": "", "_s_r_a": "page"},
+                             headers=UA, timeout=20)
+            d = r.json()
+            print(f"  {node}: HTTP {r.status_code} 返回 {len(d)} 行；前3: {[ (x.get('symbol'), x.get('name')) for x in d[:3] ]}")
+        r = requests.get("https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount",
+                         params={"node": "new_jrhy"}, headers=UA, timeout=20)
+        print("  成分数量接口:", r.text[:80])
+    step("新浪行业成分股（金融行业/酒店餐饮）", cons)
+
+    def stress():
+        codes = [f"sh6000{n:02d}" for n in range(0, 40)]
+        ok, fail, lat, errs = 0, 0, [], {}
+        for c in codes:
+            t = time.time()
+            try:
+                get("MoneyFlow.ssl_qsfx_zjlrqs", page=1, num=250, sort="opendate", asc=0, daima=c)
+                ok += 1
+            except Exception as e:  # noqa: BLE001
+                fail += 1
+                errs[type(e).__name__] = errs.get(type(e).__name__, 0) + 1
+            lat.append(time.time() - t)
+            time.sleep(0.2)
+        print(f"  40次连续请求（间隔0.2s）：成功 {ok} 失败 {fail} {errs}；平均 {sum(lat)/len(lat):.2f}s 最慢 {max(lat):.2f}s")
+    step("连续请求稳定性（40次）", stress)
+
+    def board_hist_guess():
+        for path, params in (
+            ("MoneyFlow.ssl_qsfx_zjlrqs", {"daima": "new_jrhy"}),
+            ("MoneyFlow.ssl_bk_zjlrqs", {"bankuai": "new_jrhy"}),
+            ("MoneyFlow.ssl_qsfx_bkzjlrqs", {"daima": "new_jrhy"}),
+        ):
+            try:
+                r = requests.get(base + path, params={"page": 1, "num": 3, "sort": "opendate", "asc": 0, **params}, headers=UA, timeout=20)
+                print(f"  {path} {params}: HTTP {r.status_code} {r.text[:150]!r}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {path}: 失败 {type(e).__name__}")
+    step("新浪板块历史（猜测接口）", board_hist_guess)
