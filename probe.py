@@ -77,3 +77,49 @@ def run2():
         print("  条数", d["total"], pd.DataFrame(d["diff"]).head(3).to_string())
     except Exception as e:  # noqa: BLE001
         print("  失败", type(e).__name__, str(e)[:150])
+
+
+def run3():
+    """第三轮：验证直连东财的每个接口。"""
+    import traceback
+
+    import fetch
+    import fetch_em
+
+    def step(name, fn):
+        print(f"\n=== {name}")
+        t = time.time()
+        try:
+            r = fn()
+            print(f"  成功 {time.time()-t:.1f}s")
+            return r
+        except Exception as e:  # noqa: BLE001
+            print(f"  失败 {type(e).__name__}: {str(e)[:300]}")
+            return None
+
+    ind = step("行业今日资金流列表", fetch.fetch_industry_today)
+    if ind is not None:
+        print(f"  行业数 {len(ind)}，成交额缺失 {int(ind['amount'].isna().sum())}")
+        print(ind.head(5).to_string())
+        print("  全部行业名:", "、".join(ind["industry"].tolist())[:3000])
+    name = "银行" if ind is not None and "银行" in set(ind["industry"]) else (ind["industry"].iloc[0] if ind is not None else None)
+    if name:
+        h = step(f"行业资金流历史（{name}）", lambda: fetch.fetch_industry_hist(name))
+        if h is not None:
+            print(f"  {len(h)} 行，{h['date'].min()} ~ {h['date'].max()}")
+            print(h.tail(3).to_string())
+        pr = step(f"行业日K收盘价（{name}，430天）", lambda: fetch.fetch_industry_price(name, 430))
+        if pr is not None:
+            print(f"  {len(pr)} 行，{pr['date'].min()} ~ {pr['date'].max()}")
+            print(pr.tail(3).to_string())
+        c = step(f"行业成分股（{name}）", lambda: fetch.fetch_industry_cons(name))
+        if c is not None:
+            print(f"  {len(c)} 只，前5: {c[:5]}")
+    st = step("全市场个股今日资金流（分页）", fetch.fetch_stock_today)
+    if st is not None:
+        print(f"  {len(st)} 只，净额缺失 {int(st['net'].isna().sum())}")
+        print(st.sort_values('net', ascending=False).head(3).to_string())
+    sh = step("个股历史资金流（600519）", lambda: fetch.fetch_stock_hist("600519"))
+    if sh is not None:
+        print(f"  {len(sh)} 行，{sh['date'].min()} ~ {sh['date'].max()}")
+    print("\n请求统计:", fetch_em.STATS, "首选组合:", fetch_em._preferred)

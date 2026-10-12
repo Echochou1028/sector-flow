@@ -51,82 +51,61 @@ def is_trading_day(day=None):
         return day.weekday() < 5  # 兜底：只排除周末
 
 
+_CODES = {}   # 行业名 -> 板块代码（每次运行由 fetch_industry_today 填充）
+
+
+def _industry_code(industry):
+    if not _CODES:
+        fetch_industry_today()
+    return _CODES[industry]
+
+
 def fetch_industry_today():
     """全部行业今日主力资金流（盘中为暂计）。返回 industry, pct_chg, net, amount。"""
-    import akshare as ak
-    df = _retry(ak.stock_sector_fund_flow_rank, indicator="今日", sector_type="行业资金流")
-    name = _pick(df, "名称")
-    pct = _pick(df, "涨跌幅")
-    net = _pick(df, "主力净流入", "净额")
-    ratio = _pick(df, "主力净流入", "净占比")
-    out = pd.DataFrame({
-        "industry": df[name].astype(str),
-        "pct_chg": pd.to_numeric(df[pct], errors="coerce"),
-        "net": pd.to_numeric(df[net], errors="coerce"),
-    })
-    out["amount"] = _amount(df[net], df[ratio])
-    return out
+    import fetch_em
+    df = fetch_em.industry_list()
+    df = df.dropna(subset=["name"]).drop_duplicates("name", keep="first")
+    _CODES.clear()
+    _CODES.update(dict(zip(df["name"].astype(str), df["code"].astype(str))))
+    out = pd.DataFrame({"industry": df["name"].astype(str), "pct_chg": df["pct_chg"], "net": df["net"]})
+    out["amount"] = _amount(df["net"], df["ratio"])
+    return out.reset_index(drop=True)
 
 
 def fetch_industry_hist(industry):
     """单个行业的历史日度主力净流入（东方财富通常回溯约120个交易日）。"""
-    import akshare as ak
-    df = _retry(ak.stock_sector_fund_flow_hist, symbol=industry)
-    d = _pick(df, "日期")
-    net = _pick(df, "主力净流入", "净额")
-    ratio = _pick(df, "主力净流入", "净占比")
-    out = pd.DataFrame({
-        "date": pd.to_datetime(df[d]).dt.strftime("%Y-%m-%d"),
-        "industry": industry,
-        "net": pd.to_numeric(df[net], errors="coerce"),
-    })
-    out["amount"] = _amount(df[net], df[ratio])
+    import fetch_em
+    df = fetch_em.flow_hist("90." + _industry_code(industry))
+    out = pd.DataFrame({"date": df["date"], "industry": industry, "net": df["net"]})
+    out["amount"] = _amount(df["net"], df["ratio"])
     return out
 
 
 def fetch_industry_price(industry, days=430):
     """行业板块日K收盘价（东方财富行业板块指数）。days 为向前回溯的自然日数。"""
-    import akshare as ak
+    import fetch_em
     end = dt.date.today()
     start = end - dt.timedelta(days=days)
-    df = _retry(ak.stock_board_industry_hist_em, symbol=industry, period="日k",
-                start_date=start.strftime("%Y%m%d"), end_date=end.strftime("%Y%m%d"), adjust="")
-    return pd.DataFrame({
-        "date": pd.to_datetime(df[_pick(df, "日期")]).dt.strftime("%Y-%m-%d"),
-        "industry": industry,
-        "close": pd.to_numeric(df[_pick(df, "收盘")], errors="coerce"),
-    })
+    df = fetch_em.kline_close("90." + _industry_code(industry), start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
+    return pd.DataFrame({"date": df["date"], "industry": industry, "close": df["close"]})
 
 
 def fetch_stock_today():
-    """全市场个股今日主力净流入（一次请求）。返回 code, name, pct_chg, net。"""
-    import akshare as ak
-    df = _retry(ak.stock_individual_fund_flow_rank, indicator="今日")
-    out = pd.DataFrame({
-        "code": df[_pick(df, "代码")].astype(str).str.zfill(6),
-        "name": df[_pick(df, "名称")].astype(str),
-        "pct_chg": pd.to_numeric(df[_pick(df, "涨跌幅")], errors="coerce"),
-        "net": pd.to_numeric(df[_pick(df, "主力净流入", "净额")], errors="coerce"),
-    })
-    return out
+    """全市场个股今日主力净流入（分页，约50次请求）。返回 code, name, pct_chg, net。"""
+    import fetch_em
+    return fetch_em.stock_today()
 
 
 def fetch_stock_hist(code):
     """单只个股历史日度主力净流入（约120个交易日），仅供一次性回填使用。"""
-    import akshare as ak
-    market = "sh" if code.startswith("6") else ("bj" if code[0] in "489" else "sz")
-    df = _retry(ak.stock_individual_fund_flow, stock=code, market=market, tries=2, wait=1.0)
-    return pd.DataFrame({
-        "date": pd.to_datetime(df[_pick(df, "日期")]).dt.strftime("%Y-%m-%d"),
-        "code": code,
-        "net": pd.to_numeric(df[_pick(df, "主力净流入", "净额")], errors="coerce"),
-    })
+    import fetch_em
+    df = fetch_em.flow_hist(fetch_em.stock_secid(code))
+    return pd.DataFrame({"date": df["date"], "code": str(code).zfill(6), "net": df["net"]})
 
 
 def fetch_industry_cons(industry):
-    import akshare as ak
-    df = _retry(ak.stock_board_industry_cons_em, symbol=industry)
-    return df[_pick(df, "代码")].astype(str).str.zfill(6).tolist()
+    import fetch_em
+    return fetch_em.board_cons(_industry_code(industry))
 
 
 def get_industry_map(industries, force=False):
