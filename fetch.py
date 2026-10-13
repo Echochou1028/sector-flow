@@ -1,6 +1,6 @@
-"""数据抓取层（AKShare / 东方财富）。所有网络请求都集中在这里，便于替换数据源。
+"""数据抓取层。主力资金数据走新浪（fetch_sina，直连），交易日历和ETF份额走 AKShare。
 
-注意：AKShare 的接口列名偶尔会改版，这里统一用 _pick 按关键词匹配列名，
+AKShare 的接口列名偶尔会改版，这里统一用 _pick 按关键词匹配列名，
 匹配不到时抛出带列名清单的错误，方便排查。
 """
 import datetime as dt
@@ -51,80 +51,40 @@ def is_trading_day(day=None):
         return day.weekday() < 5  # 兜底：只排除周末
 
 
-_CODES = {}   # 行业名 -> 板块代码（每次运行由 fetch_industry_today 填充）
-
-
-def _industry_code(industry):
-    if not _CODES:
-        fetch_industry_today()
-    return _CODES[industry]
-
-
-def fetch_industry_today():
-    """全部行业今日主力资金流（盘中为暂计）。返回 industry, pct_chg, net, amount。"""
-    import fetch_em
-    df = fetch_em.industry_list()
-    df = df.dropna(subset=["name"]).drop_duplicates("name", keep="first")
-    _CODES.clear()
-    _CODES.update(dict(zip(df["name"].astype(str), df["code"].astype(str))))
-    out = pd.DataFrame({"industry": df["name"].astype(str), "pct_chg": df["pct_chg"], "net": df["net"]})
-    out["amount"] = _amount(df["net"], df["ratio"])
-    return out.reset_index(drop=True)
-
-
-def fetch_industry_hist(industry):
-    """单个行业的历史日度主力净流入（东方财富通常回溯约120个交易日）。"""
-    import fetch_em
-    df = fetch_em.flow_hist("90." + _industry_code(industry))
-    out = pd.DataFrame({"date": df["date"], "industry": industry, "net": df["net"]})
-    out["amount"] = _amount(df["net"], df["ratio"])
-    return out
-
-
-def fetch_industry_price(industry, days=430):
-    """行业板块日K收盘价（东方财富行业板块指数）。days 为向前回溯的自然日数。"""
-    import fetch_em
-    end = dt.date.today()
-    start = end - dt.timedelta(days=days)
-    df = fetch_em.kline_close("90." + _industry_code(industry), start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
-    return pd.DataFrame({"date": df["date"], "industry": industry, "close": df["close"]})
-
-
 def fetch_stock_today():
-    """全市场个股今日主力净流入（分页，约50次请求）。返回 code, name, pct_chg, net。"""
-    import fetch_em
-    return fetch_em.stock_today()
+    """沪深A股今日主力净流入（新浪，分页约12次请求）。返回 code, name, pct_chg, net, amount。"""
+    import fetch_sina
+    df = fetch_sina.stock_today()
+    if len(df) < config.MIN_STOCKS:
+        raise RuntimeError(f"个股当日数据只有 {len(df)} 只（少于 {config.MIN_STOCKS}），疑似抓取不完整，已中止")
+    return df
 
 
 def fetch_stock_hist(code):
-    """单只个股历史日度主力净流入（约120个交易日），仅供一次性回填使用。"""
-    import fetch_em
-    df = fetch_em.flow_hist(fetch_em.stock_secid(code))
-    return pd.DataFrame({"date": df["date"], "code": str(code).zfill(6), "net": df["net"]})
+    """单只个股逐日历史（约320个交易日），仅供一次性回填使用。返回 date, code, net, amount。"""
+    import fetch_sina
+    return fetch_sina.stock_hist(code, num=config.BACKFILL_DAYS)
 
 
-def fetch_industry_cons(industry):
-    import fetch_em
-    return fetch_em.board_cons(_industry_code(industry))
-
-
-def get_industry_map(industries, force=False):
-    """行业 -> 成分股代码列表，缓存在 json，超过 MAP_REFRESH_DAYS 天才刷新。"""
+def get_industry_map(force=False):
+    """行业 -> 成分股代码列表（新浪行业，48个），缓存在 json，超过 MAP_REFRESH_DAYS 天才刷新。"""
+    import fetch_sina
     p = config.INDUSTRY_MAP_JSON
-    cached = {}
-    if p.exists():
-        cached = json.loads(p.read_text(encoding="utf-8"))
+    cached = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    if cached and not force:
         age = (dt.date.today() - dt.date.fromisoformat(cached.get("_date", "2000-01-01"))).days
-        if not force and age < config.MAP_REFRESH_DAYS and all(i in cached for i in industries):
+        if age < config.MAP_REFRESH_DAYS:
             return cached
     result = {"_date": dt.date.today().isoformat()}
-    for ind in industries:
+    for name, cat in fetch_sina.industry_list():
         try:
-            result[ind] = fetch_industry_cons(ind)
+            result[name] = fetch_sina.industry_cons(cat)
         except Exception as e:  # noqa: BLE001
-            print(f"[warn] 成分股获取失败 {ind}: {e}")
-            result[ind] = cached.get(ind, [])  # 失败时沿用旧映射
-        time.sleep(config.REQUEST_SLEEP)
+            print(f"[warn] 成分股获取失败 {name}: {e}")
+            result[name] = cached.get(name, [])   # 失败时沿用旧映射
+        time.sleep(0.3)
+    if sum(1 for k, v in result.items() if not k.startswith("_") and v) < 30:
+        raise RuntimeError("行业成分映射取到的行业不足30个，已中止")
     p.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
 

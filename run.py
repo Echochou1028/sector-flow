@@ -1,8 +1,9 @@
-"""入口。三种模式：
-  intraday  盘中：抓今日暂计 + 个股，叠加已存历史，生成页面（不写历史）
-  final     盘后：刷新各行业历史并落盘，生成定稿页面
+"""入口。
+  intraday  盘中：抓今日个股暂计，叠加已存历史，生成页面（不写历史）
+  final     盘后：保存当日个股数据（追加一个文件），生成定稿页面
   etf       晚间：记录ETF份额快照，刷新页面里的ETF验证（T+1）
-  backfill  一次性回填个股历史（约1~2小时，只需手动跑一次）
+  backfill  一次性回填个股历史（新浪，约20~30分钟；首次必须先跑，否则没有历史可算）
+  probe     自检新浪数据层是否可用（只打印，不写文件）
   demo      用随机模拟数据跑通全流程（离线自测，不联网）
 """
 import argparse
@@ -23,43 +24,25 @@ def now_bj():
     return dt.datetime.now(BJ)
 
 
-def load_history():
-    if config.HISTORY_CSV.exists():
-        return pd.read_csv(config.HISTORY_CSV, dtype={"industry": str})
-    return pd.DataFrame(columns=["date", "industry", "net", "amount"])
-
-
-def save_history(df):
-    df = df.drop_duplicates(["date", "industry"], keep="last").sort_values(["industry", "date"])
-    df.to_csv(config.HISTORY_CSV, index=False)
-
-
-def load_price():
-    if config.PRICE_CSV.exists():
-        return pd.read_csv(config.PRICE_CSV, dtype={"industry": str})
-    return pd.DataFrame(columns=["date", "industry", "close"])
-
-
-def save_price(df):
-    df.drop_duplicates(["date", "industry"], keep="last").sort_values(["industry", "date"]).to_csv(config.PRICE_CSV, index=False)
-
-
-def load_stock_hist(max_days=max(config.WINDOWS)):
-    """读取最近 max_days 个交易日的个股逐日文件。"""
+def load_stock_hist(max_days=max(config.WINDOWS) + 5):
+    """读取最近 max_days 个交易日的个股逐日文件：date, code, net, amount。"""
     files = sorted(config.STOCK_DIR.glob("*.csv.gz"))[-max_days:] if config.STOCK_DIR.exists() else []
     parts = []
     for f in files:
         d = pd.read_csv(f, dtype={"code": str})
+        if "amount" not in d.columns:
+            d["amount"] = float("nan")
         d["date"] = f.name[:10]
-        parts.append(d[["date", "code", "net"]])
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=["date", "code", "net"])
+        parts.append(d[["date", "code", "net", "amount"]])
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=["date", "code", "net", "amount"])
 
 
 def save_stock_day(stocks_df, trade_date):
-    """保存当日个股主力净流入（每天一个文件，追加式）。"""
+    """保存当日个股（code, net, amount），每天一个文件，追加式。"""
     config.STOCK_DIR.mkdir(parents=True, exist_ok=True)
-    d = stocks_df[["code", "net"]].dropna()
-    d = d.assign(net=d["net"].round(0).astype("int64"))
+    d = stocks_df[["code", "net", "amount"]].dropna(subset=["net"]).copy()
+    d["amount"] = d["amount"].fillna(0)
+    d = d.assign(net=d["net"].round(0).astype("int64"), amount=d["amount"].round(0).astype("int64"))
     d.to_csv(config.STOCK_DIR / f"{trade_date}.csv.gz", index=False, compression="gzip")
 
 
@@ -85,51 +68,18 @@ def run_intraday_or_final(mode):
         print("非交易日，跳过")
         return
     trade_date = today.isoformat()
-    today_df = fetch.fetch_industry_today()
-    history = load_history()
-
+    stocks_df = fetch.fetch_stock_today()            # 不足 MIN_STOCKS 只会直接报错中止，避免写入残缺数据
+    imap = fetch.get_industry_map()
     if mode == "final":
-        parts = [history]
-        for ind in today_df["industry"]:
-            try:
-                parts.append(fetch.fetch_industry_hist(ind))
-            except Exception as e:  # noqa: BLE001
-                print(f"[warn] 历史获取失败 {ind}: {e}")
-            time.sleep(config.REQUEST_SLEEP)
-        history = pd.concat(parts, ignore_index=True)
-        # 当日行：以历史接口为准；接口还没出当日数据时用 rank 接口的值兜底
-        have_today = set(history.loc[history["date"] == trade_date, "industry"])
-        fallback = today_df.assign(date=trade_date)[["date", "industry", "net", "amount"]]
-        history = pd.concat([history, fallback[~fallback["industry"].isin(have_today)]], ignore_index=True)
-        save_history(history)
-        history = load_history()
-
-    price_df = load_price()
-    if mode == "final":
-        # 首次回溯约430个自然日；之后只补最近25天
-        full_hist = len(price_df) and price_df.groupby("industry").size().min() >= 250
-        parts = [price_df]
-        for ind in today_df["industry"]:
-            try:
-                parts.append(fetch.fetch_industry_price(ind, days=25 if full_hist else 430))
-            except Exception as e:  # noqa: BLE001
-                print(f"[warn] 行业价格获取失败 {ind}: {e}")
-            time.sleep(config.REQUEST_SLEEP)
-        price_df = pd.concat(parts, ignore_index=True)
-        save_price(price_df)
-        price_df = load_price()
-
-    try:
-        stocks_df = fetch.fetch_stock_today()
-        imap = fetch.get_industry_map(list(today_df["industry"]))
-    except Exception as e:  # noqa: BLE001
-        print(f"[warn] 个股/成分映射获取失败，个股TOP3留空: {e}")
-        stocks_df, imap = None, {}
-
-    if mode == "final" and stocks_df is not None:
         save_stock_day(stocks_df, trade_date)
+    stock_hist = load_stock_hist()
+    past = stock_hist[stock_hist["date"] != trade_date]
+    if past["date"].nunique() < 20:
+        print(f"[warn] 已累积历史只有 {past['date'].nunique()} 个交易日，请先手动运行一次 backfill 回填历史")
+    history = compute.industry_history(past, imap)
+    today_df = compute.industry_today(stocks_df, imap)
     result = compute.build_result(
-        history, today_df, imap, stocks_df, load_stock_hist(), price_df,
+        history, today_df, imap, stocks_df, stock_hist,
         mode="final" if mode == "final" else "intraday",
         trade_date=trade_date, updated_at=now_bj().strftime("%Y-%m-%d %H:%M"))
     finish(result)
@@ -163,23 +113,11 @@ def run_demo():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "probe2", "probe3", "probe4", "probe5"])
+    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe"])
     m = ap.parse_args().mode
     if m == "probe":
         import probe
         probe.run()
-    elif m == "probe2":
-        import probe
-        probe.run2()
-    elif m == "probe3":
-        import probe
-        probe.run3()
-    elif m == "probe4":
-        import probe
-        probe.run4()
-    elif m == "probe5":
-        import probe
-        probe.run5()
     elif m == "backfill":
         import backfill_stocks
         backfill_stocks.run()

@@ -55,18 +55,40 @@ def window_nets(g):
             for n in config.WINDOWS}
 
 
-def window_pcts(price_g, pct_today):
-    """行业各窗口涨幅（%）。price_g 为不含当日的收盘价序列；当日收盘价由昨收和今日涨跌幅推算，盘中/盘后通用。"""
-    out = {n: None for n in config.WINDOWS}
-    if price_g is None or len(price_g) == 0 or pct_today is None or pd.isna(pct_today):
-        return out
-    closes = price_g.sort_values("date")["close"].dropna().tolist()
-    if not closes:
-        return out
-    today_close = closes[-1] * (1 + pct_today / 100.0)
+def _members(imap):
+    return pd.DataFrame([(c, ind) for ind, cs in imap.items() if not ind.startswith("_") for c in cs],
+                        columns=["code", "industry"]).drop_duplicates("code")
+
+
+def industry_history(stock_hist, imap):
+    """由个股逐日数据按行业汇总：返回 date, industry, net(元), amount(元)。
+    amount 缺失（无法反推）的个股当日不计入成交额，影响很小。"""
+    if stock_hist is None or stock_hist.empty:
+        return pd.DataFrame(columns=["date", "industry", "net", "amount"])
+    d = stock_hist.merge(_members(imap), on="code")
+    d["amount"] = pd.to_numeric(d["amount"], errors="coerce").where(lambda x: x > 0)
+    d["net"] = pd.to_numeric(d["net"], errors="coerce")
+    return (d.groupby(["date", "industry"]).agg(net=("net", "sum"), amount=("amount", "sum"))
+            .reset_index())
+
+
+def industry_today(stocks_df, imap):
+    """当日（暂计或定稿）个股数据按行业汇总：返回 industry, net, amount。"""
+    d = stocks_df.merge(_members(imap), on="code")
+    d["amount"] = d["amount"].where(d["amount"] > 0)
+    return d.groupby("industry").agg(net=("net", "sum"), amount=("amount", "sum")).reset_index()
+
+
+def rank_industries(per_ind, qmap):
+    """各窗口资金流入/流出最多的行业前N。per_ind: {行业: (nets, ratios)}，窗口覆盖不足的行业不参与该窗口。"""
+    out = {}
     for n in config.WINDOWS:
-        if len(closes) >= n:
-            out[n] = round((today_close / closes[-n] - 1) * 100, 2)
+        rows = [(ind, nets[n], ratios.get(n)) for ind, (nets, ratios) in per_ind.items() if nets.get(n) is not None]
+        pack = lambda r: {"industry": r[0], "net": r[1], "q": qmap.get(r[0]),
+                          "ratio": None if r[2] is None else round(r[2] * 100, 2)}
+        up = sorted([r for r in rows if r[1] > 0], key=lambda r: -r[1])[:config.RANK_TOPN]
+        down = sorted([r for r in rows if r[1] < 0], key=lambda r: r[1])[:config.RANK_TOPN]
+        out[str(n)] = {"in": [pack(r) for r in up], "out": [pack(r) for r in down]}
     return out
 
 
@@ -109,12 +131,9 @@ def top_stocks(industry, imap, sums, cov, stocks_df):
     return out
 
 
-def build_result(history, today_df, imap, stocks_df, stock_hist, price_df, mode, trade_date, updated_at):
-    """history: 已定稿的行业历史；today_df: 当日（暂计或定稿）行业数据；stock_hist: 个股逐日历史。"""
+def build_result(history, today_df, imap, stocks_df, stock_hist, mode, trade_date, updated_at):
+    """history: 已定稿的行业历史（由个股汇总）；today_df: 当日（暂计或定稿）行业数据；stock_hist: 个股逐日历史。"""
     sums, cov = stock_window_sums(stock_hist, stocks_df, trade_date)
-    price_by = {}
-    if price_df is not None and len(price_df):
-        price_by = {k: v for k, v in price_df[price_df["date"] != trade_date].groupby("industry")}
     h = history[history["date"] != trade_date]
     t = today_df.assign(date=trade_date)[["date", "industry", "net", "amount"]]
     full = pd.concat([h, t], ignore_index=True)
@@ -122,12 +141,16 @@ def build_result(history, today_df, imap, stocks_df, stock_hist, price_df, mode,
     today_info = today_df.set_index("industry")
     quadrants = {k: [] for k in config.QUADRANTS}
     insufficient = []
+    per_ind, qmap = {}, {}
     for ind, g in full.groupby("industry"):
         ratios, days = window_ratios(g)
+        nets = window_nets(g)
+        per_ind[ind] = (nets, ratios)
         q, short, long_v, basis = classify(ratios)
         if q is None:
             insufficient.append(ind)
             continue
+        qmap[ind] = q
         info = today_info.loc[ind] if ind in today_info.index else None
         item = {
             "industry": ind,
@@ -136,13 +159,8 @@ def build_result(history, today_df, imap, stocks_df, stock_hist, price_df, mode,
             "long": round(long_v * 100, 2),
             "long_basis": basis,
             "days": days,
-            "nets": {str(k): v for k, v in window_nets(g).items()},
-            "pcts": {str(k): v for k, v in window_pcts(
-                price_by.get(ind), None if info is None else info["pct_chg"]).items()},
-            "momentum": "加速" if (ratios.get(5) is not None and ratios.get(20) is not None
-                                   and abs(ratios[5]) > abs(ratios[20])) else "减速",
+            "nets": {str(k): v for k, v in nets.items()},
             "today_net": None if info is None or pd.isna(info["net"]) else round(info["net"] / 1e8, 2),
-            "pct_chg": None if info is None or pd.isna(info["pct_chg"]) else round(float(info["pct_chg"]), 2),
             "stocks": top_stocks(ind, imap, sums, cov, stocks_df) if config.QUADRANTS[q]["stocks"] else None,
             "etf": None,
         }
@@ -159,9 +177,12 @@ def build_result(history, today_df, imap, stocks_df, stock_hist, price_df, mode,
         "trade_date": trade_date,
         "updated_at": updated_at,
         "history_days": int(full.groupby("industry").size().max()) if len(full) else 0,
+        "windows": config.WINDOWS,
+        "rank_windows": config.RANK_WINDOWS,
         "stock_default_window": config.STOCK_DEFAULT_WINDOW,
         "insufficient": sorted(insufficient),
         "quadrants": quadrants,
+        "rank": rank_industries(per_ind, qmap),
     }
 
 
