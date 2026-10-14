@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "intraday / final / etf / backfill / probe（backfill 首次部署先手动跑一次，约20~40分钟；probe 只自检数据源）"
+        description: "intraday / final / etf / backfill / industry / probe（industry=抓申万行业映射，首次先跑；backfill 首次部署先手动跑一次，约20~40分钟；probe 只自检数据源）"
         default: "final"
 
 concurrency:

@@ -69,7 +69,7 @@ def run_intraday_or_final(mode):
         return
     trade_date = today.isoformat()
     stocks_df = fetch.fetch_stock_today()            # 不足 MIN_STOCKS 只会直接报错中止，避免写入残缺数据
-    imap = fetch.get_industry_map()
+    imap = fetch.get_industry_map(stocks_df["code"].tolist())
     if mode == "final":
         save_stock_day(stocks_df, trade_date)
     stock_hist = load_stock_hist()
@@ -113,11 +113,11 @@ def run_demo():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "probe_class"])
+    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "industry"])
     m = ap.parse_args().mode
-    if m == "probe_class":
-        import probe_class
-        probe_class.run()
+    if m == "industry":
+        import fetch
+        fetch.get_industry_map(fetch.fetch_stock_today()["code"].tolist(), force=True)
     elif m == "probe":
         import probe
         probe.run()

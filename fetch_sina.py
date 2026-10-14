@@ -119,3 +119,38 @@ def industry_cons(category, page_size=100, max_pages=20):
         time.sleep(0.2)
     industry_cons.last_raw, industry_cons.last_total = raw, total   # 供自检：取到的行数应等于板块总数
     return sorted(set(codes))
+
+
+# ---- 申万行业（来自新浪个股资料页"所属行业板块"，页面注明为申万分类；Type 为6位编号，前2位=一级行业）----
+SW1 = {"11": "农林牧渔", "21": "采掘", "22": "化工", "23": "钢铁", "24": "有色金属", "27": "电子", "28": "汽车",
+       "33": "家用电器", "34": "食品饮料", "35": "纺织服装", "36": "轻工制造", "37": "医药生物", "41": "公用事业",
+       "42": "交通运输", "43": "房地产", "45": "商业贸易", "46": "休闲服务", "48": "银行", "49": "非银金融",
+       "51": "综合", "61": "建筑材料", "62": "建筑装饰", "63": "电气设备", "64": "机械设备", "65": "国防军工",
+       "71": "计算机", "72": "传媒", "73": "通信"}
+_IND_URL = "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpOtherInfo/stockid/{}/menu_num/2.phtml"
+_IND_RE = re.compile(r'<td class="ct" align="center">([^<]+)</td>\s*<td class="ct" align="center"><a [^>]*?stockid=\d+&Type=(\d{6})')
+
+
+def stock_industry(code, tries=4, timeout=25):
+    """单只个股所属申万行业。返回 (6位编号, 最细行业名)；取不到返回 None（如新股尚无行业）。"""
+    last = None
+    for i in range(tries):
+        try:
+            r = _session.get(_IND_URL.format(str(code).zfill(6)), timeout=timeout)
+            r.raise_for_status()
+            r.encoding = "gb2312"
+            html = r.text
+            k = html.find("所属行业板块")
+            if k < 0:
+                raise RuntimeError("页面结构异常（无所属行业板块）")
+            j = html.find("所属概念板块", k)
+            seg = html[k: j if j > k else k + 2500]
+            m = _IND_RE.search(seg)
+            STATS["ok"] += 1
+            return (m.group(2), m.group(1).strip()) if m else None
+        except Exception as e:  # noqa: BLE001
+            last = f"{type(e).__name__} {str(e)[:80]}"
+            time.sleep(min(1.0 * (2 ** i), 8))
+    STATS["fail"] += 1
+    STATS["last_err"] = last
+    return "ERR"

@@ -23,7 +23,7 @@ RANK_TOPN = 3              # 各窗口资金流入/流出最多的行业数量
 RANK_WINDOWS = WINDOWS   # 排行图与行业详情统一展示的周期
 BACKFILL_DAYS = 320        # 回填个股历史的交易日数（新浪实测可回溯1000日以上）
 MIN_STOCKS = 3000          # 当日个股数据少于此数视为抓取不完整，不写入历史
-MAP_REFRESH_DAYS = 7       # 行业成分映射刷新周期
+MAP_REFRESH_DAYS = 30       # 行业成分映射刷新周期
 REQUEST_SLEEP = 0.4        # 逐行业请求之间的间隔（秒），降低被限流概率
 
 QUADRANTS = {

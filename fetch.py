@@ -66,27 +66,56 @@ def fetch_stock_hist(code):
     return fetch_sina.stock_hist(code, num=config.BACKFILL_DAYS)
 
 
-def get_industry_map(force=False):
-    """行业 -> 成分股代码列表（新浪行业，48个），缓存在 json，超过 MAP_REFRESH_DAYS 天才刷新。"""
+def get_industry_map(codes=None, force=False, max_new=300):
+    """申万一级行业 -> 成分股代码（28个）。数据来自新浪个股资料页，每只股票1次请求。
+    缓存在 industry_map.json（含每只股票的编号）：日常只补抓新股（每次最多 max_new 只）；
+    首次或 force=True（run.py industry）抓全部，约5500次请求、4线程约30分钟，中断后重跑自动续抓。"""
     import fetch_sina
+    from concurrent.futures import ThreadPoolExecutor
     p = config.INDUSTRY_MAP_JSON
     cached = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-    if cached and not force:
-        age = (dt.date.today() - dt.date.fromisoformat(cached.get("_date", "2000-01-01"))).days
-        if age < config.MAP_REFRESH_DAYS:
-            return cached
-    result = {"_date": dt.date.today().isoformat()}
-    for name, cat in fetch_sina.industry_list():
-        try:
-            result[name] = fetch_sina.industry_cons(cat)
-        except Exception as e:  # noqa: BLE001
-            print(f"[warn] 成分股获取失败 {name}: {e}")
-            result[name] = cached.get(name, [])   # 失败时沿用旧映射
-        time.sleep(0.3)
-    if sum(1 for k, v in result.items() if not k.startswith("_") and v) < 30:
-        raise RuntimeError("行业成分映射取到的行业不足30个，已中止")
-    p.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
-    return result
+    stocks = {} if force else dict(cached.get("_stocks", {}))
+    if force and cached.get("_partial") and cached.get("_stocks"):   # 上次全量抓取被中断：接着抓
+        stocks = dict(cached["_stocks"])
+    codes = list(codes) if codes is not None else sorted(stocks)
+    todo = [c for c in codes if c not in stocks]
+    if stocks and not force and len(todo) > max_new:
+        todo = todo[:max_new]
+    print(f"[industry] 已有 {len(stocks)} 只，本次抓取 {len(todo)} 只")
+
+    def save(partial):
+        by = {}
+        for c, (t, n) in stocks.items():
+            nm = fetch_sina.SW1.get(str(t)[:2])
+            if nm:
+                by.setdefault(nm, []).append(c)
+        out = {"_date": dt.date.today().isoformat(), "_partial": partial, "_stocks": stocks}
+        out.update({k: sorted(v) for k, v in by.items()})
+        p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        return out
+
+    def one(c):
+        r = fetch_sina.stock_industry(c)
+        time.sleep(0.15)
+        return c, r
+    n_err = 0
+    if todo:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for i, (c, r) in enumerate(ex.map(one, todo), 1):
+                if r == "ERR":
+                    n_err += 1
+                else:
+                    stocks[c] = [r[0], r[1]] if r else ["00", "无行业"]   # 页面没有行业的（如刚上市）记为无行业，不参与
+                if i % 500 == 0:
+                    save(True)
+                    print(f"[industry] {i}/{len(todo)}")
+        if n_err:
+            print(f"[warn] 行业抓取失败 {n_err} 只（下次运行会自动补抓）")
+    out = save(n_err > 0 and force)
+    n_ind = sum(1 for k, v in out.items() if not k.startswith("_") and v)
+    if n_ind < 20:
+        raise RuntimeError(f"申万行业映射只取到 {n_ind} 个行业（应约28个），已中止；请先运行 industry 模式")
+    return out
 
 
 def fetch_etf_shares(codes, day=None):
