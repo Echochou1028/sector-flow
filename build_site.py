@@ -317,7 +317,19 @@ function renderDetail(sel){
 const meta = $("meta");
 meta.append(h("span","","交易日 "+DATA.trade_date));
 meta.append(h("span","","更新于 "+DATA.updated_at+"（北京时间）"));
-meta.append(h("span","badge "+(DATA.mode==="final"?"final":""), DATA.mode==="final"?"盘后定稿":"盘中暂计"));
+const badge=h("span","badge","");
+meta.append(badge);
+function bjNow(){return new Date(Date.now()+(new Date().getTimezoneOffset()+480)*60000);}
+function isOpen(){
+  const t=bjNow(),wd=t.getDay(),m=t.getHours()*60+t.getMinutes();
+  if(wd===0||wd===6)return false;
+  if(m<570||m>=900)return false;
+  const today=t.getFullYear()+String(t.getMonth()+1).padStart(2,"0")+String(t.getDate()).padStart(2,"0");
+  const td=String(DATA.trade_date||"").replace(/\D/g,"");
+  return !td||td===today;
+}
+function setBadge(){const o=isOpen();badge.className="badge"+(o?"":" final");badge.textContent=o?"盘中暂计":"盘后定稿";}
+setBadge();setInterval(setBadge,60000);
 meta.append(h("span","","已累积历史 "+DATA.history_days+" 个交易日"));
 $("foot").textContent = DATA.insufficient.length
   ? "历史数据不足、暂未分类的行业："+DATA.insufficient.join("、")
