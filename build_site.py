@@ -120,7 +120,7 @@ footer{color:var(--mute);font-size:12px;margin:24px 0 8px}
 <h1>行业资金流向</h1>
 <div class="meta" id="meta"></div>
 <div class="note">
-口径：行业按申万一级行业分类（取自新浪个股资料页，共28个；公司转型或更名后分类可能滞后，可在 industry_override.json 手动修正）；行业主力净流入＝行业内个股主力净流入（新浪大单口径，估算值）逐日汇总，占比＝主力净流入合计 ÷ 同期成交额合计。因新浪大单口径的全市场合计偏正，行业的净流入和占比均已扣除全市场同期水平，只反映相对强弱（红色=强于全市场，绿色=弱于全市场）。红色=流入（条向右），绿色=流出（条向左）。
+口径：行业按__SCHEME__分类（取自东方财富F10公司资料；个别公司分类滞后时，可在 industry_override.json 手动修正）；行业主力净流入＝行业内个股主力净流入（新浪大单口径，估算值）逐日汇总，占比＝主力净流入合计 ÷ 同期成交额合计。因新浪大单口径的全市场合计偏正，行业的净流入和占比均已扣除全市场同期水平，只反映相对强弱（红色=强于全市场，绿色=弱于全市场）。红色=流入（条向右），绿色=流出（条向左）。
 短期=近20日，长期=近250日（历史不足时用120日，详情里会标注）。
 盘中数据为"今日暂计"，盘后定稿；ETF验证为T+1。本页是资金流向观察工具，不构成买卖建议。
 </div>
@@ -199,8 +199,10 @@ const qTitle = q => q ? QMETA[q].title : "历史不足，未分类";
 const RWINS = DATA.rank_windows || [20,60,120,250];
 /* ---------- 模块1：一张完整的正负轴条形图（纵轴=周期，同一比例尺，标签交错在条形对侧） ---------- */
 function rankChartAll(W){
-  const gl=46, rowH=24, th=14, gpad=7, labelPad=76;
+  const gl=46, rowH=24, th=14, gpad=7;
   const groups=RWINS.map(w=>{const r=(DATA.rank||{})[String(w)]||{in:[],out:[]}; return {w, rows:[...r.in,...r.out]}});
+  const maxName=Math.max(4,...groups.flatMap(g=>g.rows.map(r=>r.industry.length)));
+  const labelPad=Math.max(76, Math.round(maxName*13*(W<520?0.95:1))+14);
   let H=4;
   groups.forEach(g=>{g.y=H; g.h=Math.max(g.rows.length,1)*rowH+2*gpad; H+=g.h});
   H+=4;
@@ -478,7 +480,9 @@ def render(result, out=None):
     data = json.dumps(result, ensure_ascii=False).replace("</", "<\\/")
     qmeta = json.dumps({k: {"title": v["title"], "tag": v["tag"]} for k, v in config.QUADRANTS.items()},
                        ensure_ascii=False)
-    html = TEMPLATE.replace("__DATA__", data).replace("__QMETA__", qmeta)
+    scheme = {"em": f"东方财富行业（{config.EM_LEVEL}级）", "csrc": "证监会行业（" + ("门类" if config.CSRC_LEVEL <= 1 else "大类") + "）",
+              "sw": "申万一级行业"}.get(config.INDUSTRY_SCHEME, "东方财富行业")
+    html = TEMPLATE.replace("__DATA__", data).replace("__QMETA__", qmeta).replace("__SCHEME__", scheme)
     config.DOCS.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
     return out

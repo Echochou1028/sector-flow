@@ -23,7 +23,7 @@ RANK_TOPN = 3              # 各窗口资金流入/流出最多的行业数量
 RANK_WINDOWS = WINDOWS   # 排行图与行业详情统一展示的周期
 BACKFILL_DAYS = 320        # 回填个股历史的交易日数（新浪实测可回溯1000日以上）
 MIN_STOCKS = 3000          # 当日个股数据少于此数视为抓取不完整，不写入历史
-MAP_REFRESH_DAYS = 30       # 行业成分映射刷新周期
+MAP_REFRESH_DAYS = 7        # 行业成分映射刷新周期
 REQUEST_SLEEP = 0.4        # 逐行业请求之间的间隔（秒），降低被限流概率
 
 QUADRANTS = {
@@ -34,3 +34,8 @@ QUADRANTS = {
 }
 
 RELATIVE_TO_MARKET = True   # 行业净流入/占比统一扣除全市场同期水平（新浪大单口径整体偏正，不扣除则几乎所有行业都是流入）
+
+# 行业分类方案："em"=东方财富行业（默认）；"csrc"=证监会行业；"sw"=申万一级（新浪，逐只抓取较慢）
+INDUSTRY_SCHEME = "em"
+EM_LEVEL = 1       # 东财行业取第几级：1=一级（约30个，默认）、2=二级（约100个）、3=三级
+CSRC_LEVEL = 2     # 证监会行业：1=门类（约19个）、2=大类（约86个）

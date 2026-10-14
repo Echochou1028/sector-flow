@@ -1,163 +1,67 @@
-"""东方财富数据直连（不经过 AKShare）。
-
-背景：AKShare 1.19.1 的请求带 ut 参数和大量字段，在 GitHub Actions 上被东财网关返回 502，
-最简参数的请求能成功，所以这里自己拼最简请求。网关偶尔 502/断连，所以每个请求会在
-多种"域名/协议/请求头"组合间依次尝试，并记住上次成功的组合。
+"""东方财富 F10 公司资料（批量）：每只股票的"东财行业"和"证监会行业"。
+接口 datacenter.eastmoney.com/securities/api/data/v1/get，reportName=RPT_F10_BASIC_ORGINFO，
+每页500条、全市场约50页（含新三板等非A股，只保留沪深A股），每页约1秒，实测在 GitHub 机器上稳定。
+字段：BOARD_NAME_LEVEL=东财行业（如 汽车-汽车零部件-底盘与发动机系统），INDUSTRYCSRC1=证监会行业（如 制造业-汽车制造业）。
 """
+import re
 import time
 
 import pandas as pd
 import requests
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
-HOSTS = {
-    "push2": ["push2.eastmoney.com", "push2delay.eastmoney.com"],
-    "push2his": ["push2his.eastmoney.com"],
-}
-_preferred = {}   # 家族 -> 上次成功的 (host, scheme, headers_idx)
-_session = requests.Session()
-STATS = {"ok": 0, "fail": 0, "last_err": ""}
+URL = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+           "Referer": "https://emweb.securities.eastmoney.com/"}
+A_CODE = re.compile(r"^(60|68|00|30)\d{4}$")
+_s = requests.Session()
+_s.headers.update(HEADERS)
 
 
-def _combos(family):
-    out = []
-    for host in HOSTS[family]:
-        for hi in (0, 1):
-            out.append((host, "https", hi))
-    pref = _preferred.get(family)
-    if pref in out:
-        out.remove(pref)
-        out.insert(0, pref)
-    return out
+def _page(pn, tries=6):
+    last = ""
+    for i in range(tries):
+        try:
+            r = _s.get(URL, params={"reportName": "RPT_F10_BASIC_ORGINFO", "columns": "ALL", "quoteColumns": "",
+                                    "sortTypes": "1", "sortColumns": "SECURITY_CODE", "source": "HSF10", "client": "PC",
+                                    "pageNumber": pn, "pageSize": 500}, timeout=30)
+            j = r.json()
+            if not j.get("success"):
+                raise RuntimeError(f"success=false {j.get('message')}")
+            res = j.get("result") or {}
+            return res.get("data") or [], int(res.get("pages") or 0)
+        except Exception as e:  # noqa: BLE001
+            last = f"{type(e).__name__} {str(e)[:80]}"
+            time.sleep(min(1.5 * (i + 1), 10))
+    raise RuntimeError(f"东财F10第{pn}页取不到（重试{tries}次）: {last}")
 
 
-def get_json(family, path, params, timeout=25, rounds=4):
-    """每一轮把所有组合试一遍；整轮失败后退避等待（2/5/10秒）再来，应对网关限流。"""
-    last = None
-    for rd in range(rounds):
-        for combo in _combos(family):
-            host, scheme, hi = combo
-            url = f"{scheme}://{host}{path}"
-            try:
-                r = _session.get(url, params=params, headers=(UA if hi else {}), timeout=timeout)
-                if r.status_code != 200:
-                    raise RuntimeError(f"HTTP {r.status_code}")
-                j = r.json()
-                _preferred[family] = combo
-                STATS["ok"] += 1
-                return j
-            except Exception as e:  # noqa: BLE001
-                last = f"{host} {'UA' if hi else '默认头'}: {type(e).__name__} {str(e)[:60]}"
-                time.sleep(0.4)
-        if rd < rounds - 1:
-            time.sleep((2, 5, 10)[rd])
-    STATS["fail"] += 1
-    STATS["last_err"] = last
-    raise RuntimeError(f"东财请求失败 {path}（重试{rounds}轮）最后错误: {last}")
-
-
-def _clist(fs, fields, fid="f62", pz=100, max_pages=200, sleep=0.6, big=None):
-    """取 clist 列表，返回 diff 记录列表（按代码去重）。
-    先用大页（big）一次要尽量多；若服务器把页大小压回更小，则按它实际给的页大小继续翻页。"""
-    def page(pn, size):
-        j = get_json("push2", "/api/qt/clist/get", {
-            "pn": pn, "pz": size, "po": 1, "np": 1, "fltt": 2, "invt": 2,
-            "fid": fid, "fs": fs, "fields": fields})
-        d = j.get("data") or {}
-        diff = d.get("diff") or []
-        if isinstance(diff, dict):
-            diff = list(diff.values())
-        return diff, d.get("total", 0)
-
-    size = big or pz
-    rows, total = page(1, size)
-    if big and total and len(rows) < min(big, total):
-        size = max(len(rows), 1)            # 服务器限制了页大小：之后用同样的页大小翻页
-        if size != big:
-            rows, total = page(1, size)     # 用实际页大小重取第1页，保证翻页偏移一致
-    pn = 2
-    while len(rows) < total and pn <= max_pages:
-        time.sleep(sleep)
-        diff, _ = page(pn, size)
-        if not diff:
+def fetch_basic_info(max_pages=80):
+    """返回 DataFrame：code, name, board（东财行业，3级用'-'连接）, csrc（证监会行业 门类-大类）。只含沪深A股。"""
+    rows, pages, pn = [], None, 1
+    while pn <= (pages or max_pages) and pn <= max_pages:
+        data, pages = _page(pn)
+        if not data:
             break
-        rows += diff
+        for r in data:
+            c = str(r.get("SECURITY_CODE") or "")
+            if A_CODE.match(c):
+                rows.append((c, r.get("SECURITY_NAME_ABBR"), r.get("BOARD_NAME_LEVEL") or "", r.get("INDUSTRYCSRC1") or ""))
         pn += 1
-    seen, out = set(), []
-    for r in rows:
-        k = r.get("f12")
-        if k not in seen:
-            seen.add(k)
-            out.append(r)
-    print(f"  [东财列表] 取到 {len(out)}/{total} 条，页大小 {size}")
-    return out
+        time.sleep(0.2)
+    df = pd.DataFrame(rows, columns=["code", "name", "board", "csrc"]).drop_duplicates("code")
+    if len(df) < 3000:
+        raise RuntimeError(f"东财F10只取到 {len(df)} 只A股（应约5400），疑似不完整，已中止")
+    return df
 
 
-def _num(x):
-    try:
-        return float(x)
-    except (TypeError, ValueError):
-        return float("nan")
-
-
-def industry_list():
-    """行业板块今日资金流。返回 code, name, pct_chg, net, ratio(主力净占比%)。"""
-    rows = _clist("m:90+t:2", "f12,f14,f3,f62,f184", big=1000)
-    return pd.DataFrame({
-        "code": [r.get("f12") for r in rows], "name": [r.get("f14") for r in rows],
-        "pct_chg": [_num(r.get("f3")) for r in rows], "net": [_num(r.get("f62")) for r in rows],
-        "ratio": [_num(r.get("f184")) for r in rows]})
-
-
-def board_cons(board_code):
-    """板块成分股代码列表。"""
-    rows = _clist(f"b:{board_code}+f:!50", "f12,f14", fid="f3")
-    return [str(r["f12"]).zfill(6) for r in rows if r.get("f12")]
-
-
-def stock_today():
-    """全市场个股今日主力净流入。返回 code, name, pct_chg, net。"""
-    fs = ("m:0+t:6+f:!2,m:0+t:13+f:!2,m:0+t:80+f:!2,m:1+t:2+f:!2,"
-          "m:1+t:23+f:!2,m:0+t:7+f:!2,m:1+t:3+f:!2")
-    rows = _clist(fs, "f12,f14,f3,f62", big=6000)
-    return pd.DataFrame({
-        "code": [str(r.get("f12")).zfill(6) for r in rows], "name": [r.get("f14") for r in rows],
-        "pct_chg": [_num(r.get("f3")) for r in rows], "net": [_num(r.get("f62")) for r in rows]})
-
-
-def flow_hist(secid, limit=0):
-    """日度资金流历史（板块 secid 如 90.BK1283；个股如 1.600519 / 0.000001）。
-    返回 date, net(主力净流入), ratio(主力净占比%), close, pct。"""
-    j = get_json("push2his", "/api/qt/stock/fflow/daykline/get", {
-        "lmt": limit, "klt": 101, "secid": secid,
-        "fields1": "f1,f2,f3,f7",
-        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63"})
-    kl = ((j.get("data") or {}).get("klines")) or []
-    recs = []
-    for s in kl:
-        p = s.split(",")
-        if len(p) < 7:
-            continue
-        recs.append({"date": p[0], "net": _num(p[1]), "ratio": _num(p[6]),
-                     "close": _num(p[11]) if len(p) > 11 else float("nan"),
-                     "pct": _num(p[12]) if len(p) > 12 else float("nan")})
-    return pd.DataFrame(recs, columns=["date", "net", "ratio", "close", "pct"])
-
-
-def kline_close(secid, beg, end):
-    """日K收盘价。beg/end 形如 20250101。返回 date, close。"""
-    j = get_json("push2his", "/api/qt/stock/kline/get", {
-        "secid": secid, "klt": 101, "fqt": 1, "beg": beg, "end": end,
-        "fields1": "f1,f2,f3,f4,f5,f6", "fields2": "f51,f52,f53,f54,f55,f56,f57"})
-    kl = ((j.get("data") or {}).get("klines")) or []
-    recs = []
-    for s in kl:
-        p = s.split(",")
-        if len(p) >= 3:
-            recs.append({"date": p[0], "close": _num(p[2])})
-    return pd.DataFrame(recs, columns=["date", "close"])
-
-
-def stock_secid(code):
-    code = str(code).zfill(6)
-    return ("1." if code.startswith(("6", "9")) else "0.") + code
+def level_name(text, scheme, level):
+    """从'a-b-c'形式的行业文本取指定层级的名称；缺失返回 None。
+    东财行业 level=1/2/3：取前 level 段，用'-'连接；证监会 level=1 门类、2 大类（只取大类名）。"""
+    if not text:
+        return None
+    parts = [p.strip() for p in str(text).split("-") if p.strip()]
+    if not parts:
+        return None
+    if scheme == "csrc":
+        return parts[0] if level <= 1 else (parts[1] if len(parts) > 1 else parts[0])
+    return "-".join(parts[:level])

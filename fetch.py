@@ -66,7 +66,7 @@ def fetch_stock_hist(code):
     return fetch_sina.stock_hist(code, num=config.BACKFILL_DAYS)
 
 
-def get_industry_map(codes=None, force=False, max_new=300):
+def _sw_industry_map(codes=None, force=False, max_new=300):
     """申万一级行业 -> 成分股代码（28个）。数据来自新浪个股资料页，每只股票1次请求。
     缓存在 industry_map.json（含每只股票的编号）：日常只补抓新股（每次最多 max_new 只）；
     首次或 force=True（run.py industry）抓全部，约5500次请求、4线程约30分钟，中断后重跑自动续抓。"""
@@ -115,6 +115,50 @@ def get_industry_map(codes=None, force=False, max_new=300):
     n_ind = sum(1 for k, v in out.items() if not k.startswith("_") and v)
     if n_ind < 20:
         raise RuntimeError(f"申万行业映射只取到 {n_ind} 个行业（应约28个），已中止；请先运行 industry 模式")
+    return out
+
+
+def get_industry_map(codes=None, force=False):
+    """行业 -> 成分股代码。分类方案见 config.INDUSTRY_SCHEME：
+    "em"   东方财富行业（BOARD_NAME_LEVEL，例 汽车-汽车零部件-底盘与发动机系统），config.EM_LEVEL 取第几级（默认1）
+    "csrc" 证监会行业（INDUSTRYCSRC1，例 制造业-汽车制造业），config.CSRC_LEVEL：1=门类 2=大类
+    "sw"   申万一级（新浪个股资料页，逐只抓取较慢）
+    东财/证监会取自 F10 批量接口（全市场约50次请求、约1分钟），缓存在 industry_map.json：
+    默认每 MAP_REFRESH_DAYS 天刷新；当日有缓存里没有的新股且缓存超过1天时也会刷新；刷新失败时沿用旧缓存。"""
+    import fetch_em
+    scheme = config.INDUSTRY_SCHEME
+    if scheme == "sw":
+        return _sw_industry_map(codes, force)
+    level = config.EM_LEVEL if scheme == "em" else config.CSRC_LEVEL
+    tag = f"{scheme}{level}"
+    p = config.INDUSTRY_MAP_JSON
+    cached = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    ok = cached.get("_scheme") == tag and cached.get("_stocks")
+    if ok and not force:
+        age = (dt.date.today() - dt.date.fromisoformat(cached.get("_date", "2000-01-01"))).days
+        missing = [c for c in (codes or []) if c not in cached["_stocks"]] if codes else []
+        if age < config.MAP_REFRESH_DAYS and not (missing and age >= 1):
+            return cached
+    try:
+        info = fetch_em.fetch_basic_info()
+    except Exception as e:  # noqa: BLE001
+        if ok:
+            print(f"[warn] 东财行业刷新失败，沿用旧缓存: {e}")
+            return cached
+        raise
+    stocks, by = {}, {}
+    for r in info.itertuples():
+        stocks[r.code] = [r.board, r.csrc]
+        nm = fetch_em.level_name(r.board if scheme == "em" else r.csrc, scheme, level)
+        if nm:
+            by.setdefault(nm, []).append(r.code)
+    if len(by) < 10:
+        raise RuntimeError(f"行业分类只得到 {len(by)} 个，已中止")
+    out = {"_date": dt.date.today().isoformat(), "_scheme": tag, "_stocks": stocks}
+    out.update({k: sorted(v) for k, v in by.items()})
+    p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    print(f"[industry] {tag}：{len(by)} 个行业，覆盖 {sum(len(v) for v in by.values())} 只；"
+          + "、".join(f"{k}{len(v)}" for k, v in sorted(by.items(), key=lambda x: -len(x[1]))[:40]))
     return out
 
 

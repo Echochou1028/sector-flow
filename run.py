@@ -76,6 +76,7 @@ def apply_override(imap, stocks_df):
         if not code:
             print(f"[override] 找不到股票 {key}，已忽略"); continue
         if target not in imap or target.startswith("_"):
+            print(f"[override] 警告：行业名“{target}”不在当前分类里，将新建一个行业（请核对拼写）")
             imap[target] = []
         for ind, cs in imap.items():
             if not ind.startswith("_") and code in cs:
