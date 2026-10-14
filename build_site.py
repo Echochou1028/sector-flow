@@ -27,6 +27,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-app
 .wrap{max-width:1200px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:4px 0}
 .meta{color:var(--mute);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.autonote{color:var(--mute);font-size:11.5px;margin-top:4px;line-height:1.5}
 .badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--warn-bg);color:var(--warn)}
 .badge.final{background:var(--ok-bg);color:var(--ok)}
 .note{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;color:var(--mute);font-size:13px}
@@ -319,6 +320,7 @@ meta.append(h("span","","交易日 "+DATA.trade_date));
 meta.append(h("span","","更新于 "+DATA.updated_at+"（北京时间）"));
 const badge=h("span","badge","");
 meta.append(badge);
+meta.parentNode.insertBefore(h("div","autonote","自动更新：交易日 09:00–15:00 每15分钟刷新一次（盘中暂计），15:30 盘后定稿，19:30 补充ETF验证；非交易日不更新。数据来源：新浪财经、东方财富。"),meta.nextSibling);
 function bjNow(){return new Date(Date.now()+(new Date().getTimezoneOffset()+480)*60000);}
 function isOpen(){
   const t=bjNow(),wd=t.getDay(),m=t.getHours()*60+t.getMinutes();
