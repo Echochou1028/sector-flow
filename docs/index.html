@@ -1,1 +1,447 @@
-<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>行业资金流向</title><body style="background:#12151c;color:#98a0b3;font:16px sans-serif;padding:24px">数据生成中，请先运行 Actions。</body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>行业资金流向</title>
+<style>
+:root{color-scheme:dark;--bg:#12151c;--card:#1b1f29;--ink:#e8ebf2;--mute:#98a0b3;--line:#2a3040;
+--in:#ff6b63;--out:#2ec4b6;--warn:#f0b04a;--warn-bg:#3a2e16;--accent:#7aa2ff;--ok-bg:#17332a;--ok:#3ccf8e;
+--in1:#ffa09a;--in2:#ff6b63;--in3:#c9433d;--out1:#7ee6da;--out2:#2ec4b6;--out3:#23958b;
+--pt:#3987e5;--grid:#2c2c2a;--axis:#4a4a46;--axtxt:#898781}
+html{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0}
+.meta{color:var(--mute);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--warn-bg);color:var(--warn)}
+.badge.final{background:var(--ok-bg);color:var(--ok)}
+.note{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;color:var(--mute);font-size:13px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
+.panel h2{font-size:16px;margin:0}
+.sub{color:var(--mute);font-size:13px;margin:2px 0 8px}
+#chart{position:relative}
+#chart svg{display:block;width:100%;height:auto;touch-action:manipulation}
+.pt{cursor:pointer;outline:none}
+.pt:focus-visible .dot{stroke:var(--ink)}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap;display:none;z-index:4}
+.tip .n{color:var(--mute);margin-bottom:2px}
+.tip .v{font-size:14px;font-weight:600}
+.gw{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px;color:var(--mute)}
+.gbar{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:18px;font-size:13px;cursor:pointer}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+section{margin:18px 0}
+section h3{font-size:15px;margin:0 0 2px}
+section .tag{color:var(--mute);font-size:13px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.panel .card{border:0;padding:0}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 8px}
+.name{font-weight:600;font-size:16px;white-space:nowrap;flex-shrink:0}
+.today{font-size:12px;color:var(--mute);white-space:normal}
+.tr{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:1 1 280px;min-width:0;text-align:right}
+@media (max-width:520px){.tr{align-items:flex-start;text-align:left;flex-basis:100%}}
+.in{color:var(--in)}.out{color:var(--out)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{font-size:12px;padding:2px 8px;border-radius:8px;background:var(--bg)}
+.chip.in{background:var(--in-bg)}.chip.out{background:var(--out-bg)}
+.etf{font-size:12px;margin-top:8px;color:var(--mute)}
+.etf.diverge{color:var(--warn)}
+.stitle{font-size:12px;color:var(--mute);margin-bottom:6px}
+.cov{font-size:11px;color:var(--warn);margin-top:4px}
+.stocks{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:13px}
+.srow{display:flex;justify-content:space-between;gap:8px}
+.stocks small{color:var(--mute)}
+.empty{color:var(--mute);font-size:13px}
+.r1{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-start;margin-top:8px}
+.r1 .cbox{flex:1 1 420px;min-width:0}
+.lg{flex:0 1 300px;font-size:13px;color:var(--mute)}
+.lg .lt{color:var(--ink);font-weight:600;margin-bottom:4px}
+.lg .lp{margin:6px 0}
+.lg .lrow{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0}
+.lg .lsw{color:var(--ink);font-size:12px}
+.tsw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.colg{outline:none;cursor:pointer}
+.colg:focus-visible rect{stroke:var(--accent);stroke-width:2}
+.cbox{width:100%}
+.cbox svg{display:block;touch-action:manipulation}
+.key{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;font-size:13px;color:var(--mute);margin:4px 0 2px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.sw.in{background:var(--in)}.sw.out{background:var(--out)}
+.rowg{cursor:pointer;outline:none}
+.rhit{fill:transparent}
+.rowg:hover .rhit{fill:rgba(255,255,255,.07)}
+.rowg:focus-visible .rhit{stroke:var(--accent);stroke-width:2}
+.dhead{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:2px 12px}
+.dhead .dr{margin-left:auto;text-align:right;margin-bottom:6px}
+.dtag{color:var(--mute);font-size:13px}
+.dline{font-size:13px;color:var(--mute);margin-top:2px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin-top:6px}
+.sb{background:var(--bg);border-radius:10px;padding:8px 10px}
+.sb h4{font-size:13px;margin:0 0 4px}
+.sr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:2px 0}
+.sr .r{text-align:right;white-space:nowrap}
+.sr small{color:var(--mute)}
+.gtip{position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.4);display:none;z-index:9;max-width:min(330px,calc(100vw - 16px))}
+.gtip .n{color:var(--mute);margin-bottom:2px}
+.gtip .v{font-size:13px;font-weight:600}
+.gtip .tg{margin-top:6px;font-size:12px;color:var(--mute)}
+.gtip .trow{padding:3px 4px;border-radius:6px}
+.gtip .trow.hl{background:rgba(255,255,255,.09)}
+.gtip .t1{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:13px}
+.gtip .t2{color:var(--mute);font-size:11px}
+.gtip .hint{margin-top:6px;color:var(--accent);font-size:12px}
+details{margin-top:8px;font-size:13px;color:var(--mute)}
+summary{cursor:pointer;padding:4px 0}
+table{border-collapse:collapse;width:100%;font-size:12px;margin-top:4px}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;font-weight:400}
+th{color:var(--mute)}
+td.num,th.num{text-align:right}
+footer{color:var(--mute);font-size:12px;margin:24px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>行业资金流向</h1>
+<div class="meta" id="meta"></div>
+<div class="note">
+口径：行业按申万一级行业分类（取自新浪个股资料页，共28个）；行业主力净流入＝行业内个股主力净流入（新浪大单口径，估算值）逐日汇总，占比＝主力净流入合计 ÷ 同期成交额合计。红色=流入（条向右），绿色=流出（条向左）。
+短期=近20日，长期=近250日（历史不足时用120日，详情里会标注）。
+盘中数据为"今日暂计"，盘后定稿；ETF验证为T+1。本页是资金流向观察工具，不构成买卖建议。
+</div>
+
+<div class="panel">
+  <h2>资金流入 / 流出最多的行业 TOP3</h2>
+  <div class="key"><span><i class="sw in"></i>净流入（向右）</span><span><i class="sw out"></i>净流出（向左）</span></div>
+  <div id="rankChart" class="cbox" style="margin-top:8px"></div>
+</div>
+
+<div class="panel">
+  <h2>行业四象限</h2>
+  <div id="chart"></div>
+</div>
+
+<div class="panel" id="detailPanel">
+  <h2>个股热榜</h2>
+  <div id="detail" style="margin-top:6px"></div>
+</div>
+
+<footer id="foot"></footer>
+</div>
+<script>
+const DATA = {"mode": "final", "trade_date": "2026-10-14", "updated_at": "2026-10-14 10:46", "history_days": 255, "windows": [20, 60, 120, 250], "rank_windows": [20, 60, 120, 250], "stock_default_window": 20, "insufficient": [], "quadrants": {"q1": [{"industry": "房地产", "ratios": {"20": 4.14, "60": 3.51, "120": 3.3, "250": 2.84}, "short": 4.14, "long": 2.84, "long_basis": 250, "days": 255, "nets": {"20": 215.29, "60": 499.9, "120": 1005.59, "250": 1980.35}, "today_net": 0.01, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600641", "name": "先导基电", "net": 71.62, "pct_chg": -1.24}, {"code": "000002", "name": "万 科Ａ", "net": 28.17, "pct_chg": -1.34}, {"code": "000981", "name": "山子高科", "net": 20.34, "pct_chg": -1.91}], "60": [{"code": "600641", "name": "先导基电", "net": 84.69, "pct_chg": -1.24}, {"code": "000560", "name": "我爱我家", "net": 57.0, "pct_chg": -1.21}, {"code": "000506", "name": "招金黄金", "net": 33.72, "pct_chg": -0.56}], "120": [{"code": "600641", "name": "先导基电", "net": 164.67, "pct_chg": -1.24}, {"code": "600246", "name": "万通发展", "net": 142.02, "pct_chg": -1.43}, {"code": "000620", "name": "盈新发展", "net": 61.56, "pct_chg": -1.02}], "250": [{"code": "000981", "name": "山子高科", "net": 311.96, "pct_chg": -1.91}, {"code": "600641", "name": "先导基电", "net": 191.1, "pct_chg": -1.24}, {"code": "600246", "name": "万通发展", "net": 186.22, "pct_chg": -1.43}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "综合", "ratios": {"20": 2.45, "60": 2.95, "120": 2.56, "250": 2.29}, "short": 2.45, "long": 2.29, "long_basis": 250, "days": 255, "nets": {"20": 22.55, "60": 81.67, "120": 173.8, "250": 338.96}, "today_net": -0.18, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "301297", "name": "富乐德", "net": 13.56, "pct_chg": -2.3}, {"code": "300688", "name": "创业黑马", "net": 2.89, "pct_chg": 0.6}, {"code": "300938", "name": "信测标准", "net": 2.09, "pct_chg": 6.28}], "60": [{"code": "301297", "name": "富乐德", "net": 27.46, "pct_chg": -2.3}, {"code": "300688", "name": "创业黑马", "net": 11.99, "pct_chg": 0.6}, {"code": "000839", "name": "国安股份", "net": 9.38, "pct_chg": -1.41}], "120": [{"code": "301297", "name": "富乐德", "net": 62.03, "pct_chg": -2.3}, {"code": "300938", "name": "信测标准", "net": 17.12, "pct_chg": 6.28}, {"code": "300688", "name": "创业黑马", "net": 16.57, "pct_chg": 0.6}], "250": [{"code": "301297", "name": "富乐德", "net": 65.52, "pct_chg": -2.3}, {"code": "000839", "name": "国安股份", "net": 36.12, "pct_chg": -1.41}, {"code": "300688", "name": "创业黑马", "net": 30.8, "pct_chg": 0.6}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "公用事业", "ratios": {"20": 2.4, "60": 2.16, "120": 2.3, "250": 2.25}, "short": 2.4, "long": 2.25, "long_basis": 250, "days": 255, "nets": {"20": 200.71, "60": 660.5, "120": 1939.24, "250": 3647.34}, "today_net": 27.14, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600900", "name": "长江电力", "net": 27.09, "pct_chg": 0.89}, {"code": "000993", "name": "闽东电力", "net": 22.14, "pct_chg": 2.96}, {"code": "601985", "name": "中国核电", "net": 11.53, "pct_chg": 3.07}], "60": [{"code": "600900", "name": "长江电力", "net": 61.27, "pct_chg": 0.89}, {"code": "600396", "name": "华电辽能", "net": 39.64, "pct_chg": 0.26}, {"code": "601991", "name": "大唐发电", "net": 39.51, "pct_chg": 1.94}], "120": [{"code": "601991", "name": "大唐发电", "net": 183.29, "pct_chg": 1.94}, {"code": "600900", "name": "长江电力", "net": 104.29, "pct_chg": 0.89}, {"code": "600396", "name": "华电辽能", "net": 97.63, "pct_chg": 0.26}], "250": [{"code": "601991", "name": "大唐发电", "net": 186.03, "pct_chg": 1.94}, {"code": "600396", "name": "华电辽能", "net": 139.07, "pct_chg": 0.26}, {"code": "001896", "name": "豫能控股", "net": 125.86, "pct_chg": -0.2}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "医药生物", "ratios": {"20": 2.31, "60": 2.25, "120": 1.98, "250": 1.75}, "short": 2.31, "long": 1.75, "long_basis": 250, "days": 255, "nets": {"20": 475.51, "60": 1765.29, "120": 2886.94, "250": 4871.64}, "today_net": 10.54, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600721", "name": "百花医药", "net": 19.11, "pct_chg": -3.96}, {"code": "600488", "name": "津药药业", "net": 16.59, "pct_chg": -2.6}, {"code": "301047", "name": "义翘神州", "net": 14.0, "pct_chg": 0.73}], "60": [{"code": "603259", "name": "药明康德", "net": 81.23, "pct_chg": -0.9}, {"code": "300759", "name": "康龙化成", "net": 63.96, "pct_chg": -0.02}, {"code": "002437", "name": "誉衡药业", "net": 63.47, "pct_chg": -2.04}], "120": [{"code": "603259", "name": "药明康德", "net": 165.85, "pct_chg": -0.9}, {"code": "002432", "name": "九安医疗", "net": 97.18, "pct_chg": -1.22}, {"code": "300759", "name": "康龙化成", "net": 88.42, "pct_chg": -0.02}], "250": [{"code": "002432", "name": "九安医疗", "net": 182.64, "pct_chg": -1.22}, {"code": "603259", "name": "药明康德", "net": 166.9, "pct_chg": -0.9}, {"code": "300759", "name": "康龙化成", "net": 103.31, "pct_chg": -0.02}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "国防军工", "ratios": {"20": 2.22, "60": 2.06, "120": 1.69, "250": 1.97}, "short": 2.22, "long": 1.97, "long_basis": 250, "days": 255, "nets": {"20": 143.77, "60": 413.87, "120": 973.29, "250": 3085.68}, "today_net": 5.13, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600150", "name": "中国船舶", "net": 20.66, "pct_chg": -0.95}, {"code": "600391", "name": "航发科技", "net": 11.16, "pct_chg": 10.01}, {"code": "600967", "name": "内蒙一机", "net": 10.61, "pct_chg": -1.57}], "60": [{"code": "600150", "name": "中国船舶", "net": 63.92, "pct_chg": -0.95}, {"code": "002297", "name": "博云新材", "net": 23.99, "pct_chg": -1.35}, {"code": "601606", "name": "长城军工", "net": 22.37, "pct_chg": -1.57}], "120": [{"code": "600150", "name": "中国船舶", "net": 100.28, "pct_chg": -0.95}, {"code": "002297", "name": "博云新材", "net": 73.05, "pct_chg": -1.35}, {"code": "603678", "name": "火炬电子", "net": 68.0, "pct_chg": 1.01}], "250": [{"code": "000547", "name": "航天发展", "net": 204.46, "pct_chg": 0.68}, {"code": "002465", "name": "海格通信", "net": 158.35, "pct_chg": 0.21}, {"code": "600879", "name": "航天电子", "net": 158.19, "pct_chg": 0.38}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "建筑装饰", "ratios": {"20": 2.21, "60": 2.26, "120": 1.88, "250": 2.23}, "short": 2.21, "long": 2.23, "long_basis": 250, "days": 255, "nets": {"20": 93.57, "60": 341.82, "120": 723.71, "250": 2014.57}, "today_net": 11.64, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "605287", "name": "德才股份", "net": 10.15, "pct_chg": 8.23}, {"code": "601668", "name": "中国建筑", "net": 7.13, "pct_chg": 1.36}, {"code": "603466", "name": "风语筑", "net": 6.88, "pct_chg": 6.04}], "60": [{"code": "001267", "name": "汇绿生态", "net": 36.85, "pct_chg": -2.17}, {"code": "002081", "name": "金 螳 螂", "net": 27.8, "pct_chg": -1.97}, {"code": "000628", "name": "高新发展", "net": 16.95, "pct_chg": -2.76}], "120": [{"code": "001267", "name": "汇绿生态", "net": 88.8, "pct_chg": -2.17}, {"code": "002081", "name": "金 螳 螂", "net": 61.76, "pct_chg": -1.97}, {"code": "603929", "name": "亚翔集成", "net": 46.26, "pct_chg": -3.75}], "250": [{"code": "601868", "name": "中国能建", "net": 229.16, "pct_chg": 1.67}, {"code": "001267", "name": "汇绿生态", "net": 181.43, "pct_chg": -2.17}, {"code": "603698", "name": "航天工程", "net": 89.92, "pct_chg": -0.15}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "纺织服装", "ratios": {"20": 2.11, "60": 2.36, "120": 2.37, "250": 2.49}, "short": 2.11, "long": 2.49, "long_basis": 250, "days": 255, "nets": {"20": 36.56, "60": 133.26, "120": 305.2, "250": 760.93}, "today_net": 0.53, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600630", "name": "龙头股份", "net": 6.94, "pct_chg": -1.56}, {"code": "002029", "name": "七 匹 狼", "net": 3.79, "pct_chg": -1.56}, {"code": "600400", "name": "红豆股份", "net": 3.32, "pct_chg": 4.01}], "60": [{"code": "002083", "name": "孚日股份", "net": 28.74, "pct_chg": -1.65}, {"code": "600630", "name": "龙头股份", "net": 7.07, "pct_chg": -1.56}, {"code": "603958", "name": "哈森股份", "net": 6.81, "pct_chg": -1.77}], "120": [{"code": "002083", "name": "孚日股份", "net": 35.41, "pct_chg": -1.65}, {"code": "600156", "name": "华升股份", "net": 19.71, "pct_chg": -0.28}, {"code": "300840", "name": "酷特智能", "net": 15.4, "pct_chg": 1.52}], "250": [{"code": "002083", "name": "孚日股份", "net": 68.65, "pct_chg": -1.65}, {"code": "300819", "name": "聚杰微纤", "net": 31.77, "pct_chg": -1.1}, {"code": "601566", "name": "九牧王", "net": 28.53, "pct_chg": -2.45}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "传媒", "ratios": {"20": 2.0, "60": 2.98, "120": 2.37, "250": 2.39}, "short": 2.0, "long": 2.39, "long_basis": 250, "days": 255, "nets": {"20": 211.92, "60": 1106.77, "120": 1961.42, "250": 4630.64}, "today_net": 38.86, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "300364", "name": "中文在线", "net": 16.01, "pct_chg": 5.61}, {"code": "603533", "name": "掌阅科技", "net": 14.55, "pct_chg": 10.0}, {"code": "300413", "name": "芒果超媒", "net": 12.03, "pct_chg": 4.25}], "60": [{"code": "002131", "name": "利欧股份", "net": 59.55, "pct_chg": -0.7}, {"code": "300058", "name": "蓝色光标", "net": 53.69, "pct_chg": 0.77}, {"code": "301205", "name": "联特科技", "net": 53.6, "pct_chg": -0.77}], "120": [{"code": "301205", "name": "联特科技", "net": 112.07, "pct_chg": -0.77}, {"code": "002131", "name": "利欧股份", "net": 103.76, "pct_chg": -0.7}, {"code": "300364", "name": "中文在线", "net": 67.27, "pct_chg": 5.61}], "250": [{"code": "002131", "name": "利欧股份", "net": 408.38, "pct_chg": -0.7}, {"code": "300058", "name": "蓝色光标", "net": 306.53, "pct_chg": 0.77}, {"code": "301205", "name": "联特科技", "net": 189.8, "pct_chg": -0.77}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "家用电器", "ratios": {"20": 1.88, "60": 2.1, "120": 2.01, "250": 1.83}, "short": 1.88, "long": 1.83, "long_basis": 250, "days": 255, "nets": {"20": 74.05, "60": 290.2, "120": 779.51, "250": 1635.88}, "today_net": 1.61, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002242", "name": "九阳股份", "net": 16.47, "pct_chg": -0.51}, {"code": "000651", "name": "格力电器", "net": 8.92, "pct_chg": 0.63}, {"code": "002011", "name": "盾安环境", "net": 6.83, "pct_chg": 0.0}], "60": [{"code": "000333", "name": "美的集团", "net": 51.81, "pct_chg": 1.08}, {"code": "000651", "name": "格力电器", "net": 31.81, "pct_chg": 0.63}, {"code": "002418", "name": "康盛股份", "net": 21.8, "pct_chg": -0.47}], "120": [{"code": "300475", "name": "香农芯创", "net": 147.07, "pct_chg": -3.07}, {"code": "000333", "name": "美的集团", "net": 61.47, "pct_chg": 1.08}, {"code": "002429", "name": "兆驰股份", "net": 53.6, "pct_chg": -1.07}], "250": [{"code": "300475", "name": "香农芯创", "net": 259.28, "pct_chg": -3.07}, {"code": "002759", "name": "ST天际", "net": 165.94, "pct_chg": 0.0}, {"code": "002050", "name": "三花智控", "net": 127.46, "pct_chg": -1.85}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "轻工制造", "ratios": {"20": 1.84, "60": 2.29, "120": 2.29, "250": 2.51}, "short": 1.84, "long": 2.51, "long_basis": 250, "days": 255, "nets": {"20": 82.29, "60": 315.98, "120": 773.75, "250": 1813.86}, "today_net": 6.33, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002585", "name": "双星新材", "net": 22.29, "pct_chg": 10.05}, {"code": "002303", "name": "美盈森", "net": 8.88, "pct_chg": -3.83}, {"code": "002565", "name": "顺灏股份", "net": 7.74, "pct_chg": -2.68}], "60": [{"code": "002585", "name": "双星新材", "net": 32.02, "pct_chg": 10.05}, {"code": "000815", "name": "美利云", "net": 23.9, "pct_chg": 6.13}, {"code": "600103", "name": "青山纸业", "net": 23.55, "pct_chg": -2.65}], "120": [{"code": "002585", "name": "双星新材", "net": 69.8, "pct_chg": 10.05}, {"code": "603268", "name": "松发股份", "net": 58.01, "pct_chg": -0.11}, {"code": "003018", "name": "金富科技", "net": 42.15, "pct_chg": 0.24}], "250": [{"code": "002565", "name": "顺灏股份", "net": 187.84, "pct_chg": -2.68}, {"code": "000815", "name": "美利云", "net": 97.2, "pct_chg": 6.13}, {"code": "002585", "name": "双星新材", "net": 86.63, "pct_chg": 10.05}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "机械设备", "ratios": {"20": 1.75, "60": 2.03, "120": 2.33, "250": 2.37}, "short": 1.75, "long": 2.37, "long_basis": 250, "days": 255, "nets": {"20": 495.29, "60": 2037.44, "120": 6028.14, "250": 11691.93}, "today_net": -4.77, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "601091", "name": "沈鼓集团", "net": 49.73, "pct_chg": -3.43}, {"code": "300450", "name": "先导智能", "net": 12.83, "pct_chg": -4.23}, {"code": "002552", "name": "宝鼎科技", "net": 12.73, "pct_chg": 9.99}], "60": [{"code": "300604", "name": "长川科技", "net": 76.34, "pct_chg": 2.46}, {"code": "300757", "name": "罗博特科", "net": 59.3, "pct_chg": 2.24}, {"code": "601091", "name": "沈鼓集团", "net": 49.73, "pct_chg": -3.43}], "120": [{"code": "300604", "name": "长川科技", "net": 210.87, "pct_chg": 2.46}, {"code": "600172", "name": "黄河旋风", "net": 130.18, "pct_chg": -0.76}, {"code": "300260", "name": "新莱应材", "net": 98.79, "pct_chg": -2.47}], "250": [{"code": "300604", "name": "长川科技", "net": 275.61, "pct_chg": 2.46}, {"code": "600172", "name": "黄河旋风", "net": 218.28, "pct_chg": -0.76}, {"code": "300757", "name": "罗博特科", "net": 178.89, "pct_chg": 2.24}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "农林牧渔", "ratios": {"20": 1.7, "60": 3.37, "120": 2.3, "250": 2.12}, "short": 1.7, "long": 2.12, "long_basis": 250, "days": 255, "nets": {"20": 105.18, "60": 534.73, "120": 618.94, "250": 1290.84}, "today_net": -1.41, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600127", "name": "金健米业", "net": 22.59, "pct_chg": 3.37}, {"code": "000592", "name": "平潭发展", "net": 12.57, "pct_chg": -3.99}, {"code": "600371", "name": "万向德农", "net": 10.11, "pct_chg": -2.84}], "60": [{"code": "600127", "name": "金健米业", "net": 76.9, "pct_chg": 3.37}, {"code": "000592", "name": "平潭发展", "net": 42.24, "pct_chg": -3.99}, {"code": "300189", "name": "神农种业", "net": 28.29, "pct_chg": -3.91}], "120": [{"code": "600127", "name": "金健米业", "net": 75.22, "pct_chg": 3.37}, {"code": "000592", "name": "平潭发展", "net": 49.4, "pct_chg": -3.99}, {"code": "600737", "name": "中粮糖业", "net": 30.66, "pct_chg": -4.05}], "250": [{"code": "000592", "name": "平潭发展", "net": 108.22, "pct_chg": -3.99}, {"code": "300189", "name": "神农种业", "net": 89.73, "pct_chg": -3.91}, {"code": "600127", "name": "金健米业", "net": 81.9, "pct_chg": 3.37}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "交通运输", "ratios": {"20": 1.63, "60": 2.15, "120": 1.87, "250": 1.81}, "short": 1.63, "long": 1.81, "long_basis": 250, "days": 255, "nets": {"20": 77.79, "60": 312.44, "120": 612.28, "250": 1339.72}, "today_net": 13.86, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "601872", "name": "招商轮船", "net": 32.04, "pct_chg": 1.03}, {"code": "600026", "name": "中远海能", "net": 10.06, "pct_chg": 2.11}, {"code": "601006", "name": "大秦铁路", "net": 8.67, "pct_chg": 1.6}], "60": [{"code": "601872", "name": "招商轮船", "net": 50.56, "pct_chg": 1.03}, {"code": "601919", "name": "中远海控", "net": 38.98, "pct_chg": 1.28}, {"code": "600026", "name": "中远海能", "net": 25.27, "pct_chg": 2.11}], "120": [{"code": "002245", "name": "蔚蓝锂芯", "net": 120.36, "pct_chg": -1.41}, {"code": "601872", "name": "招商轮船", "net": 77.44, "pct_chg": 1.03}, {"code": "600026", "name": "中远海能", "net": 39.28, "pct_chg": 2.11}], "250": [{"code": "601872", "name": "招商轮船", "net": 201.15, "pct_chg": 1.03}, {"code": "002245", "name": "蔚蓝锂芯", "net": 137.6, "pct_chg": -1.41}, {"code": "600026", "name": "中远海能", "net": 108.32, "pct_chg": 2.11}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "汽车", "ratios": {"20": 1.57, "60": 2.18, "120": 2.22, "250": 2.04}, "short": 1.57, "long": 2.04, "long_basis": 250, "days": 255, "nets": {"20": 150.89, "60": 678.15, "120": 1799.39, "250": 3844.79}, "today_net": -13.71, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600418", "name": "江淮汽车", "net": 25.52, "pct_chg": -6.93}, {"code": "000980", "name": "众泰汽车", "net": 19.99, "pct_chg": -3.47}, {"code": "600699", "name": "均胜电子", "net": 9.58, "pct_chg": -4.4}], "60": [{"code": "002536", "name": "飞龙股份", "net": 53.59, "pct_chg": 5.2}, {"code": "600418", "name": "江淮汽车", "net": 32.88, "pct_chg": -6.93}, {"code": "000338", "name": "潍柴动力", "net": 32.79, "pct_chg": -2.05}], "120": [{"code": "002536", "name": "飞龙股份", "net": 106.72, "pct_chg": 5.2}, {"code": "000338", "name": "潍柴动力", "net": 83.48, "pct_chg": -2.05}, {"code": "000700", "name": "模塑科技", "net": 67.3, "pct_chg": -3.69}], "250": [{"code": "000338", "name": "潍柴动力", "net": 228.49, "pct_chg": -2.05}, {"code": "002536", "name": "飞龙股份", "net": 208.5, "pct_chg": 5.2}, {"code": "002865", "name": "钧达股份", "net": 113.29, "pct_chg": -1.51}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "食品饮料", "ratios": {"20": 1.56, "60": 1.92, "120": 1.14, "250": 1.01}, "short": 1.56, "long": 1.01, "long_basis": 250, "days": 255, "nets": {"20": 75.52, "60": 346.29, "120": 428.93, "250": 767.9}, "today_net": 10.12, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "601579", "name": "会稽山", "net": 21.25, "pct_chg": -3.87}, {"code": "600059", "name": "古越龙山", "net": 16.93, "pct_chg": -2.13}, {"code": "600887", "name": "伊利股份", "net": 11.09, "pct_chg": 1.33}], "60": [{"code": "600519", "name": "贵州茅台", "net": 58.13, "pct_chg": 0.71}, {"code": "600887", "name": "伊利股份", "net": 48.13, "pct_chg": 1.33}, {"code": "600186", "name": "莲花控股", "net": 44.44, "pct_chg": -1.34}], "120": [{"code": "600186", "name": "莲花控股", "net": 107.0, "pct_chg": -1.34}, {"code": "002515", "name": "金字火腿", "net": 61.04, "pct_chg": 0.46}, {"code": "600887", "name": "伊利股份", "net": 55.68, "pct_chg": 1.33}], "250": [{"code": "600186", "name": "莲花控股", "net": 151.86, "pct_chg": -1.34}, {"code": "002515", "name": "金字火腿", "net": 71.78, "pct_chg": 0.46}, {"code": "600887", "name": "伊利股份", "net": 57.13, "pct_chg": 1.33}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "商业贸易", "ratios": {"20": 1.39, "60": 2.52, "120": 2.39, "250": 2.6}, "short": 1.39, "long": 2.6, "long_basis": 250, "days": 255, "nets": {"20": 42.87, "60": 222.31, "120": 452.23, "250": 1282.44}, "today_net": -1.65, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002640", "name": "跨境通", "net": 9.72, "pct_chg": -1.54}, {"code": "000759", "name": "中百集团", "net": 9.31, "pct_chg": -4.07}, {"code": "002264", "name": "新 华 都", "net": 5.25, "pct_chg": -1.25}], "60": [{"code": "000759", "name": "中百集团", "net": 21.89, "pct_chg": -4.07}, {"code": "002640", "name": "跨境通", "net": 16.56, "pct_chg": -1.54}, {"code": "000564", "name": "供销大集", "net": 15.79, "pct_chg": -1.37}], "120": [{"code": "603031", "name": "安孚科技", "net": 39.28, "pct_chg": -1.86}, {"code": "000759", "name": "中百集团", "net": 37.83, "pct_chg": -4.07}, {"code": "002640", "name": "跨境通", "net": 28.15, "pct_chg": -1.54}], "250": [{"code": "600821", "name": "金开新能", "net": 106.93, "pct_chg": 0.9}, {"code": "601933", "name": "永辉超市", "net": 98.15, "pct_chg": -1.34}, {"code": "600693", "name": "东百集团", "net": 73.73, "pct_chg": -4.96}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "化工", "ratios": {"20": 1.32, "60": 1.5, "120": 1.81, "250": 2.21}, "short": 1.32, "long": 2.21, "long_basis": 250, "days": 255, "nets": {"20": 375.65, "60": 1437.26, "120": 4326.4, "250": 10068.29}, "today_net": 2.1, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "603256", "name": "宏和科技", "net": 32.4, "pct_chg": -1.04}, {"code": "002080", "name": "中材科技", "net": 25.66, "pct_chg": -8.4}, {"code": "601208", "name": "东材科技", "net": 19.41, "pct_chg": 0.78}], "60": [{"code": "603256", "name": "宏和科技", "net": 45.75, "pct_chg": -1.04}, {"code": "002080", "name": "中材科技", "net": 41.71, "pct_chg": -8.4}, {"code": "002172", "name": "澳洋健康", "net": 34.47, "pct_chg": -1.35}], "120": [{"code": "002080", "name": "中材科技", "net": 146.75, "pct_chg": -8.4}, {"code": "601208", "name": "东材科技", "net": 118.2, "pct_chg": 0.78}, {"code": "301526", "name": "国际复材", "net": 109.03, "pct_chg": -1.72}], "250": [{"code": "002080", "name": "中材科技", "net": 234.18, "pct_chg": -8.4}, {"code": "301526", "name": "国际复材", "net": 191.02, "pct_chg": -1.72}, {"code": "601208", "name": "东材科技", "net": 183.79, "pct_chg": 0.78}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "计算机", "ratios": {"20": 1.28, "60": 1.95, "120": 1.93, "250": 1.95}, "short": 1.28, "long": 1.95, "long_basis": 250, "days": 255, "nets": {"20": 181.92, "60": 1189.88, "120": 2797.82, "250": 6529.46}, "today_net": -3.24, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002212", "name": "天融信", "net": 18.74, "pct_chg": -0.26}, {"code": "300454", "name": "深信服", "net": 16.19, "pct_chg": 2.47}, {"code": "002912", "name": "中新赛克", "net": 8.46, "pct_chg": 3.4}], "60": [{"code": "000938", "name": "紫光股份", "net": 150.04, "pct_chg": -1.97}, {"code": "300454", "name": "深信服", "net": 51.98, "pct_chg": 2.47}, {"code": "300209", "name": "行云科技", "net": 29.78, "pct_chg": -2.85}], "120": [{"code": "000938", "name": "紫光股份", "net": 292.9, "pct_chg": -1.97}, {"code": "301396", "name": "宏景科技", "net": 97.47, "pct_chg": 1.27}, {"code": "300454", "name": "深信服", "net": 89.66, "pct_chg": 2.47}], "250": [{"code": "000938", "name": "紫光股份", "net": 324.38, "pct_chg": -1.97}, {"code": "301396", "name": "宏景科技", "net": 172.85, "pct_chg": 1.27}, {"code": "300033", "name": "同花顺", "net": 158.41, "pct_chg": -0.74}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "建筑材料", "ratios": {"20": 1.27, "60": 1.75, "120": 2.0, "250": 2.39}, "short": 1.27, "long": 2.39, "long_basis": 250, "days": 255, "nets": {"20": 20.71, "60": 91.91, "120": 271.48, "250": 791.19}, "today_net": 0.19, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600802", "name": "福建水泥", "net": 4.36, "pct_chg": -2.09}, {"code": "002271", "name": "东方雨虹", "net": 2.22, "pct_chg": 0.56}, {"code": "002082", "name": "ST万邦", "net": 2.04, "pct_chg": -1.08}], "60": [{"code": "600881", "name": "亚泰集团", "net": 11.84, "pct_chg": -0.54}, {"code": "002271", "name": "东方雨虹", "net": 8.55, "pct_chg": 0.56}, {"code": "600802", "name": "福建水泥", "net": 4.74, "pct_chg": -2.09}], "120": [{"code": "601636", "name": "旗滨集团", "net": 26.9, "pct_chg": -0.39}, {"code": "000672", "name": "上峰材料", "net": 20.01, "pct_chg": -1.29}, {"code": "600881", "name": "亚泰集团", "net": 15.49, "pct_chg": -0.54}], "250": [{"code": "002163", "name": "海南发展", "net": 66.13, "pct_chg": -2.53}, {"code": "002271", "name": "东方雨虹", "net": 35.64, "pct_chg": 0.56}, {"code": "601636", "name": "旗滨集团", "net": 33.9, "pct_chg": -0.39}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "电子", "ratios": {"20": 1.27, "60": 0.9, "120": 1.74, "250": 1.68}, "short": 1.27, "long": 1.68, "long_basis": 250, "days": 255, "nets": {"20": 972.08, "60": 2662.33, "120": 13213.85, "250": 20499.62}, "today_net": 14.01, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "000823", "name": "超声电子", "net": 45.65, "pct_chg": 9.99}, {"code": "300408", "name": "三环集团", "net": 41.75, "pct_chg": -0.18}, {"code": "000725", "name": "京东方Ａ", "net": 35.07, "pct_chg": -1.68}], "60": [{"code": "000725", "name": "京东方Ａ", "net": 217.25, "pct_chg": -1.68}, {"code": "603228", "name": "景旺电子", "net": 151.34, "pct_chg": -2.06}, {"code": "002436", "name": "兴森科技", "net": 82.0, "pct_chg": 5.91}], "120": [{"code": "000725", "name": "京东方Ａ", "net": 999.76, "pct_chg": -1.68}, {"code": "000636", "name": "风华高科", "net": 228.71, "pct_chg": 2.31}, {"code": "002436", "name": "兴森科技", "net": 226.29, "pct_chg": 5.91}], "250": [{"code": "000725", "name": "京东方Ａ", "net": 1044.3, "pct_chg": -1.68}, {"code": "002384", "name": "东山精密", "net": 505.12, "pct_chg": -2.85}, {"code": "002436", "name": "兴森科技", "net": 332.85, "pct_chg": 5.91}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "采掘", "ratios": {"20": 1.27, "60": 2.0, "120": 1.8, "250": 2.27}, "short": 1.27, "long": 2.27, "long_basis": 250, "days": 255, "nets": {"20": 52.19, "60": 293.58, "120": 576.81, "250": 1718.57}, "today_net": 19.33, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600792", "name": "云煤能源", "net": 14.96, "pct_chg": 3.95}, {"code": "600403", "name": "大有能源", "net": 7.9, "pct_chg": 5.25}, {"code": "600121", "name": "郑州煤电", "net": 6.26, "pct_chg": 9.94}], "60": [{"code": "600121", "name": "郑州煤电", "net": 20.81, "pct_chg": 9.94}, {"code": "600403", "name": "大有能源", "net": 20.1, "pct_chg": 5.25}, {"code": "601088", "name": "中国神华", "net": 19.8, "pct_chg": 1.88}], "120": [{"code": "600397", "name": "江钨装备", "net": 66.86, "pct_chg": 0.14}, {"code": "601857", "name": "中国石油", "net": 34.87, "pct_chg": 1.96}, {"code": "600121", "name": "郑州煤电", "net": 25.8, "pct_chg": 9.94}], "250": [{"code": "600759", "name": "ST洲际", "net": 144.12, "pct_chg": 2.68}, {"code": "601857", "name": "中国石油", "net": 114.19, "pct_chg": 1.96}, {"code": "600397", "name": "江钨装备", "net": 100.25, "pct_chg": 0.14}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "电气设备", "ratios": {"20": 1.13, "60": 1.67, "120": 1.52, "250": 1.86}, "short": 1.13, "long": 1.86, "long_basis": 250, "days": 255, "nets": {"20": 193.65, "60": 1011.09, "120": 2597.51, "250": 7626.09}, "today_net": -3.53, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002531", "name": "天顺风能", "net": 9.8, "pct_chg": -6.23}, {"code": "600241", "name": "时代万恒", "net": 9.27, "pct_chg": 5.29}, {"code": "002074", "name": "国轩高科", "net": 9.21, "pct_chg": -1.59}], "60": [{"code": "603618", "name": "杭电股份", "net": 57.72, "pct_chg": 1.05}, {"code": "300750", "name": "宁德时代", "net": 41.95, "pct_chg": -0.73}, {"code": "601700", "name": "风范股份", "net": 40.63, "pct_chg": -0.81}], "120": [{"code": "002851", "name": "麦格米特", "net": 164.82, "pct_chg": 3.39}, {"code": "002129", "name": "TCL中环", "net": 95.39, "pct_chg": 3.54}, {"code": "603618", "name": "杭电股份", "net": 94.38, "pct_chg": 1.05}], "250": [{"code": "002506", "name": "协鑫集成", "net": 284.58, "pct_chg": -0.83}, {"code": "002851", "name": "麦格米特", "net": 246.05, "pct_chg": 3.39}, {"code": "601179", "name": "中国西电", "net": 172.24, "pct_chg": -1.39}]}, "etf": {"status": "none", "text": "无对应ETF"}}, {"industry": "银行", "ratios": {"20": 1.12, "60": 2.64, "120": 1.52, "250": 1.05}, "short": 1.12, "long": 1.05, "long_basis": 250, "days": 255, "nets": {"20": 56.98, "60": 464.17, "120": 510.56, "250": 758.73}, "today_net": 9.89, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600036", "name": "招商银行", "net": 15.43, "pct_chg": -0.19}, {"code": "601288", "name": "农业银行", "net": 8.44, "pct_chg": 0.28}, {"code": "600919", "name": "江苏银行", "net": 5.9, "pct_chg": 1.05}], "60": [{"code": "600036", "name": "招商银行", "net": 74.94, "pct_chg": -0.19}, {"code": "601398", "name": "工商银行", "net": 51.72, "pct_chg": 0.35}, {"code": "601288", "name": "农业银行", "net": 39.57, "pct_chg": 0.28}], "120": [{"code": "601398", "name": "工商银行", "net": 81.56, "pct_chg": 0.35}, {"code": "600036", "name": "招商银行", "net": 65.7, "pct_chg": -0.19}, {"code": "601288", "name": "农业银行", "net": 52.25, "pct_chg": 0.28}], "250": [{"code": "601398", "name": "工商银行", "net": 149.34, "pct_chg": 0.35}, {"code": "601288", "name": "农业银行", "net": 117.56, "pct_chg": 0.28}, {"code": "601988", "name": "中国银行", "net": 84.25, "pct_chg": 0.85}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "休闲服务", "ratios": {"20": 1.11, "60": 1.7, "120": 0.83, "250": 1.33}, "short": 1.11, "long": 1.33, "long_basis": 250, "days": 255, "nets": {"20": 13.58, "60": 63.92, "120": 61.69, "250": 269.73}, "today_net": 0.1, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "000978", "name": "桂林旅游", "net": 7.78, "pct_chg": -1.98}, {"code": "600593", "name": "大连圣亚", "net": 5.19, "pct_chg": 9.29}, {"code": "603099", "name": "长白山", "net": 4.33, "pct_chg": 0.33}], "60": [{"code": "000978", "name": "桂林旅游", "net": 10.23, "pct_chg": -1.98}, {"code": "300795", "name": "米奥会展", "net": 8.51, "pct_chg": -2.68}, {"code": "000428", "name": "华天酒店", "net": 8.43, "pct_chg": -1.04}], "120": [{"code": "603099", "name": "长白山", "net": 9.7, "pct_chg": 0.33}, {"code": "000978", "name": "桂林旅游", "net": 9.34, "pct_chg": -1.98}, {"code": "000428", "name": "华天酒店", "net": 8.33, "pct_chg": -1.04}], "250": [{"code": "000796", "name": "凯撒旅业", "net": 33.78, "pct_chg": -1.13}, {"code": "601888", "name": "中国中免", "net": 33.42, "pct_chg": -1.17}, {"code": "600593", "name": "大连圣亚", "net": 16.29, "pct_chg": 9.29}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "钢铁", "ratios": {"20": 0.59, "60": 1.88, "120": 1.09, "250": 2.23}, "short": 0.59, "long": 2.23, "long_basis": 250, "days": 255, "nets": {"20": 5.51, "60": 65.01, "120": 98.74, "250": 581.08}, "today_net": 2.74, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002443", "name": "金洲管道", "net": 4.49, "pct_chg": 1.13}, {"code": "600019", "name": "宝钢股份", "net": 2.96, "pct_chg": 1.7}, {"code": "000932", "name": "华菱钢铁", "net": 2.17, "pct_chg": 1.13}], "60": [{"code": "600019", "name": "宝钢股份", "net": 10.95, "pct_chg": 1.7}, {"code": "600126", "name": "杭钢股份", "net": 7.88, "pct_chg": -0.34}, {"code": "000932", "name": "华菱钢铁", "net": 6.32, "pct_chg": 1.13}], "120": [{"code": "002443", "name": "金洲管道", "net": 14.27, "pct_chg": 1.13}, {"code": "600019", "name": "宝钢股份", "net": 12.94, "pct_chg": 1.7}, {"code": "600010", "name": "包钢股份", "net": 12.22, "pct_chg": 0.0}], "250": [{"code": "600010", "name": "包钢股份", "net": 197.9, "pct_chg": 0.0}, {"code": "002756", "name": "永兴材料", "net": 79.54, "pct_chg": -0.29}, {"code": "600126", "name": "杭钢股份", "net": 47.88, "pct_chg": -0.34}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "通信", "ratios": {"20": 0.58, "60": 1.14, "120": 1.47, "250": 1.74}, "short": 0.58, "long": 1.74, "long_basis": 250, "days": 255, "nets": {"20": 152.22, "60": 1133.32, "120": 3523.57, "250": 7288.35}, "today_net": -15.0, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "002491", "name": "通鼎互联", "net": 28.69, "pct_chg": -1.25}, {"code": "300548", "name": "长芯博创", "net": 20.47, "pct_chg": -0.02}, {"code": "300570", "name": "太辰光", "net": 17.89, "pct_chg": -1.09}], "60": [{"code": "300394", "name": "天孚通信", "net": 91.72, "pct_chg": -4.31}, {"code": "300502", "name": "新易盛", "net": 91.47, "pct_chg": -3.49}, {"code": "002491", "name": "通鼎互联", "net": 77.64, "pct_chg": -1.25}], "120": [{"code": "300502", "name": "新易盛", "net": 401.09, "pct_chg": -3.49}, {"code": "300308", "name": "中际旭创", "net": 335.75, "pct_chg": -2.92}, {"code": "002491", "name": "通鼎互联", "net": 194.11, "pct_chg": -1.25}], "250": [{"code": "300308", "name": "中际旭创", "net": 735.71, "pct_chg": -2.92}, {"code": "300502", "name": "新易盛", "net": 642.79, "pct_chg": -3.49}, {"code": "300394", "name": "天孚通信", "net": 473.7, "pct_chg": -4.31}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}, {"industry": "有色金属", "ratios": {"20": 0.28, "60": 1.57, "120": 1.67, "250": 1.86}, "short": 0.28, "long": 1.86, "long_basis": 250, "days": 255, "nets": {"20": 54.8, "60": 1289.16, "120": 3522.76, "250": 7951.67}, "today_net": -0.73, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "300489", "name": "光智科技", "net": 14.12, "pct_chg": -3.71}, {"code": "603663", "name": "三祥新材", "net": 11.15, "pct_chg": -0.78}, {"code": "300395", "name": "菲利华", "net": 11.04, "pct_chg": 0.27}], "60": [{"code": "600330", "name": "天通股份", "net": 75.82, "pct_chg": -1.2}, {"code": "002428", "name": "云南锗业", "net": 71.67, "pct_chg": -1.94}, {"code": "600988", "name": "赤峰黄金", "net": 63.63, "pct_chg": -0.3}], "120": [{"code": "002428", "name": "云南锗业", "net": 174.36, "pct_chg": -1.94}, {"code": "600330", "name": "天通股份", "net": 142.56, "pct_chg": -1.2}, {"code": "300489", "name": "光智科技", "net": 94.96, "pct_chg": -3.71}], "250": [{"code": "002428", "name": "云南锗业", "net": 290.33, "pct_chg": -1.94}, {"code": "600330", "name": "天通股份", "net": 251.31, "pct_chg": -1.2}, {"code": "002149", "name": "西部材料", "net": 196.4, "pct_chg": 0.97}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}], "q2": [], "q3": [{"industry": "非银金融", "ratios": {"20": -1.37, "60": 0.77, "120": 1.11, "250": 0.88}, "short": -1.37, "long": 0.88, "long_basis": 250, "days": 255, "nets": {"20": -75.04, "60": 175.81, "120": 640.42, "250": 1134.49}, "today_net": 0.7, "stocks": {"cov": {"20": 20, "60": 60, "120": 120, "250": 250}, "20": [{"code": "600318", "name": "新力金融", "net": 4.85, "pct_chg": -2.52}, {"code": "300059", "name": "东方财富", "net": 3.64, "pct_chg": -0.17}, {"code": "002961", "name": "瑞达期货", "net": 3.53, "pct_chg": -2.23}], "60": [{"code": "601318", "name": "中国平安", "net": 30.34, "pct_chg": -0.17}, {"code": "600095", "name": "湘财股份", "net": 15.61, "pct_chg": -1.8}, {"code": "601601", "name": "中国太保", "net": 12.66, "pct_chg": -1.3}], "120": [{"code": "300059", "name": "东方财富", "net": 63.4, "pct_chg": -0.17}, {"code": "000783", "name": "长江证券", "net": 63.4, "pct_chg": 0.13}, {"code": "600030", "name": "中信证券", "net": 63.11, "pct_chg": -0.31}], "250": [{"code": "300059", "name": "东方财富", "net": 168.0, "pct_chg": -0.17}, {"code": "000617", "name": "中油资本", "net": 80.6, "pct_chg": 0.45}, {"code": "600909", "name": "华安证券", "net": 67.67, "pct_chg": -0.66}]}, "etf": {"status": "pending", "text": "ETF数据积累中"}}], "q4": []}, "rank": {"20": {"in": [{"industry": "电子", "net": 972.08, "q": "q1", "ratio": 1.27}, {"industry": "机械设备", "net": 495.29, "q": "q1", "ratio": 1.75}, {"industry": "医药生物", "net": 475.51, "q": "q1", "ratio": 2.31}], "out": [{"industry": "非银金融", "net": -75.04, "q": "q3", "ratio": -1.37}]}, "60": {"in": [{"industry": "电子", "net": 2662.33, "q": "q1", "ratio": 0.9}, {"industry": "机械设备", "net": 2037.44, "q": "q1", "ratio": 2.03}, {"industry": "医药生物", "net": 1765.29, "q": "q1", "ratio": 2.25}], "out": []}, "120": {"in": [{"industry": "电子", "net": 13213.85, "q": "q1", "ratio": 1.74}, {"industry": "机械设备", "net": 6028.14, "q": "q1", "ratio": 2.33}, {"industry": "化工", "net": 4326.4, "q": "q1", "ratio": 1.81}], "out": []}, "250": {"in": [{"industry": "电子", "net": 20499.62, "q": "q1", "ratio": 1.68}, {"industry": "机械设备", "net": 11691.93, "q": "q1", "ratio": 2.37}, {"industry": "化工", "net": 10068.29, "q": "q1", "ratio": 2.21}], "out": []}}};
+const QMETA = {"q1": {"title": "短期流入、长期流入", "tag": "持续承接，可信度高"}, "q2": {"title": "短期流入、长期流出", "tag": "疑似反弹承接或派发"}, "q3": {"title": "短期流出、长期流入", "tag": "回调中资金未撤，值得跟踪"}, "q4": {"title": "短期流出、长期流出", "tag": "持续撤离"}};
+const $ = id => document.getElementById(id);
+function h(tag, cls, text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+const fmt = (v,d=2) => v==null ? "—" : (v>0?"+":"")+v.toFixed(d)+"%";
+const cls = v => v==null ? "" : (v>0 ? "in" : v<0 ? "out" : "");
+const order = ["q1","q2","q3","q4"];
+const WINS = DATA.windows || [20,60,120,250];
+const signed = (v,d=2) => v==null ? "—" : (v>0?"+":"")+v.toFixed(d);
+
+/* ---------- 通用：全局提示框、条形路径、表格 ---------- */
+const gt = h("div","gtip"); document.body.append(gt);
+function gtPlace(x,y){
+  gt.style.display="block";
+  const w=gt.offsetWidth, hh=gt.offsetHeight;
+  gt.style.left=Math.max(4,Math.min(x+12,innerWidth-w-4))+"px";
+  gt.style.top=(y-hh-10<4 ? y+16 : y-hh-10)+"px";
+}
+function gtShow(title, rows, x, y){
+  gt.replaceChildren(); gt.append(h("div","n",title));
+  rows.forEach(([k,v])=>{const d=h("div","v"); d.append(k+" "); d.append(v); gt.append(d)});
+  gtPlace(x,y);
+}
+function gtShowNode(node, x, y){gt.replaceChildren(node); gtPlace(x,y)}
+const gtHide = () => {gt.style.display="none"};
+function bindTip(el, title, rows){
+  el.addEventListener("pointermove",e=>gtShow(title,rows,e.clientX,e.clientY));
+  el.addEventListener("pointerleave",gtHide);
+  el.addEventListener("focus",()=>{const r=el.getBoundingClientRect();gtShow(title,rows,r.left+r.width/2,r.top)});
+  el.addEventListener("blur",gtHide);
+}
+// 条形：基线一侧方角、数据端4px圆角
+function barPath(x0,len,dir,y,th){
+  const r=Math.min(4,len/2), x1=x0+dir*len;
+  return "M"+x0+" "+y+" H"+(x1-dir*r)+" Q"+x1+" "+y+" "+x1+" "+(y+r)+" V"+(y+th-r)+" Q"+x1+" "+(y+th)+" "+(x1-dir*r)+" "+(y+th)+" H"+x0+" Z";
+}
+function table(heads, rows){
+  const t=h("table",""); const tr=h("tr","");
+  heads.forEach((x,i)=>tr.append(h("th",i>=heads.numFrom?"num":"",x))); t.append(tr);
+  rows.forEach(r=>{const q=h("tr",""); r.forEach((c,i)=>q.append(h("td",i>=heads.numFrom?"num":"",c))); t.append(q)});
+  return t;
+}
+const qTitle = q => q ? QMETA[q].title : "历史不足，未分类";
+
+/* ---------- 模块1：堆叠条形图（横轴=周期；柱向上=净流入最多的3个行业，柱向下=净流出最多的3个行业；同一纵轴比例尺；文字全部在浮窗） ---------- */
+const RWINS = DATA.rank_windows || [20,60,120,250];
+/* ---------- 模块1：一张完整的正负轴条形图（纵轴=周期，同一比例尺，标签交错在条形对侧） ---------- */
+function rankChartAll(W){
+  const gl=46, rowH=24, th=14, gpad=7, labelPad=76;
+  const groups=RWINS.map(w=>{const r=(DATA.rank||{})[String(w)]||{in:[],out:[]}; return {w, rows:[...r.in,...r.out]}});
+  let H=4;
+  groups.forEach(g=>{g.y=H; g.h=Math.max(g.rows.length,1)*rowH+2*gpad; H+=g.h});
+  H+=4;
+  const all=groups.flatMap(g=>g.rows);
+  const P=Math.max(0,...all.filter(r=>r.net>0).map(r=>r.net)), N=Math.max(0,...all.filter(r=>r.net<0).map(r=>-r.net));
+  const areaW=W-gl-4;
+  const k=(P+N)>0 ? Math.max(1e-6,(areaW-2*labelPad)/(P+N)) : 0;
+  const x0=gl+N*k+labelPad;
+  const svg=s("svg",{width:W,height:H,viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"各周期主力净流入最多与最少的行业，纵轴为周期"});
+  groups.forEach((g,gi)=>{
+    if(gi%2===0) svg.append(s("rect",{x:0,y:g.y,width:W,height:g.h,fill:"rgba(255,255,255,.035)",rx:6}));
+    svg.append(s("text",{x:4,y:g.y+g.h/2+5,"font-size":14,"font-weight":700,fill:"var(--ink)"},g.w+"日"));
+  });
+  svg.append(s("line",{x1:x0,x2:x0,y1:4,y2:H-4,stroke:"var(--axis)","stroke-width":1}));
+  groups.forEach(g=>{
+    if(!g.rows.length){svg.append(s("text",{x:gl+8,y:g.y+g.h/2+4,"font-size":12,fill:"var(--mute)"},"暂无数据（历史不足）"));return}
+    g.rows.forEach((r,i)=>{
+      const y=g.y+gpad+i*rowH, cy=y+rowH/2, pos=r.net>0, len=Math.max(2,Math.abs(r.net)*k);
+      if(i>0 && g.rows[i-1].net>0 && !pos) svg.append(s("line",{x1:gl,x2:W-4,y1:y,y2:y,stroke:"var(--grid)","stroke-width":1}));
+      const a=ALL.find(x=>x.it.industry===r.industry);
+      const gr=s("g",{class:"rowg"});
+      gr.append(s("rect",{class:"rhit",x:gl,y,width:W-gl,height:rowH}));
+      gr.append(s("path",{d:barPath(x0,len,pos?1:-1,cy-th/2,th),fill:pos?"var(--in)":"var(--out)"}));
+      gr.append(s("text",{x:pos?x0+len+6:x0-len-6,y:cy+4,"text-anchor":pos?"start":"end","font-size":12,"font-weight":600,fill:"var(--ink)"},signed(r.net)+"亿"));
+      gr.append(s("text",{x:pos?x0-8:x0+8,y:cy+4,"text-anchor":pos?"end":"start","font-size":13,fill:"var(--ink)"},r.industry));
+      bindTip(gr, r.industry+" · "+g.w+"日", [["主力净流入",signed(r.net)+"亿"],["主力净流入占同期成交额比例",fmt(r.ratio)],["所属象限",qTitle(r.q)]]);
+      if(a){gr.setAttribute("tabindex","0");gr.setAttribute("role","button");
+        gr.setAttribute("aria-label",g.w+"日 "+r.industry+"，主力净流入"+signed(r.net)+"亿，点击查看详情");
+        gr.addEventListener("click",()=>choose(a));
+        gr.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();choose(a)}});}
+      svg.append(gr);
+    });
+  });
+  return svg;
+}
+function renderRank(){
+  const box=$("rankChart"); box.replaceChildren();
+  const cb=box;
+  const any=RWINS.some(w=>{const r=(DATA.rank||{})[String(w)];return r&&(r.in.length||r.out.length)});
+  if(any) cb.append(rankChartAll(Math.max(280,cb.clientWidth)));
+  else cb.append(h("div","empty","暂无数据（历史不足）"));
+}
+
+/* ---------- 模块3：选中行业详情（各周期条形图 + 各周期个股TOP3，全部同时展示） ---------- */
+function detailChart(it, W){
+  const rowH=34, th=16, padT=4, padB=4, H=padT+RWINS.length*rowH+padB;
+  const gl=48, gr=74, labelPad=70;
+  const svg=s("svg",{width:W,height:H,viewBox:"0 0 "+W+" "+H,role:"img","aria-label":it.industry+"各周期主力净流入"});
+  const nets=RWINS.map(w=>it.nets[String(w)]);
+  const pos=Math.max(0,...nets.filter(v=>v!=null)), neg=Math.max(0,...nets.filter(v=>v!=null).map(v=>-v));
+  const span=Math.max(pos+neg,1e-9), areaL=gl+labelPad*(neg>0?1:0.3), areaR=W-gr-labelPad*(pos>0?1:0.3);
+  const k=Math.max(10,areaR-areaL)/span, x0=areaL+neg*k;
+  svg.append(s("line",{x1:x0,x2:x0,y1:padT,y2:H-padB,stroke:"var(--axis)","stroke-width":1}));
+  RWINS.forEach((w,i)=>{
+    const y=padT+i*rowH, cy=y+rowH/2, v=it.nets[String(w)], ratio=it.ratios[String(w)];
+    const g=s("g",{class:"rowg",tabindex:0,role:"img","aria-label":w+"日主力净流入"+signed(v)+"亿，占同期成交额比例"+fmt(ratio)});
+    if(i%2===0) g.append(s("rect",{x:0,y,width:W,height:rowH,fill:"rgba(255,255,255,.035)",rx:6}));
+    g.append(s("rect",{class:"rhit",x:0,y,width:W,height:rowH}));
+    g.append(s("text",{x:4,y:cy+5,"font-size":14,"font-weight":700,fill:"var(--ink)"},w+"日"));
+    if(v==null){
+      g.append(s("text",{x:areaL,y:cy+4,"font-size":12,fill:"var(--mute)"},"历史不足"));
+    }else{
+      const len=Math.max(2,Math.abs(v)*k), p=v>0;
+      g.append(s("path",{d:barPath(x0,len,p?1:-1,cy-th/2,th),fill:p?"var(--in)":"var(--out)"}));
+      g.append(s("text",{x:p?x0+len+6:x0-len-6,y:cy+4,"text-anchor":p?"start":"end","font-size":12,"font-weight":600,fill:"var(--ink)"},signed(v)+"亿"));
+    }
+    g.append(s("text",{x:W-2,y:cy+4,"text-anchor":"end","font-size":12,fill:"var(--ink)"},fmt(ratio)));
+    bindTip(g, it.industry+" · "+w+"日", [["主力净流入",signed(v)+"亿"],["主力净流入占同期成交额比例",fmt(ratio)]]);
+    svg.append(g);
+  });
+  return svg;
+}
+function stockBlocks(it){
+  const grid=h("div","sg");
+  RWINS.forEach(w=>{
+    const b=h("div","sb"); b.append(h("h4","",w+"日主力净流入 TOP3"));
+    const rows=(it.stocks&&it.stocks[String(w)])||[];
+    if(!rows.length) b.append(h("div","empty","暂无数据"));
+    rows.forEach(x=>{
+      const r=h("div","sr");
+      const l=h("span",""); l.append(x.name); l.title=x.code; r.append(l);
+      const rt=h("span","r"); rt.append(h("span",cls(x.net),signed(x.net)+"亿")); rt.append(" ");
+      rt.append(h("small",cls(x.pct_chg),"今日 "+fmt(x.pct_chg))); r.append(rt); b.append(r);
+    });
+    const have=it.stocks&&it.stocks.cov?it.stocks.cov[String(w)]:null;
+    if(have!=null && have<w*0.9) b.append(h("div","cov","个股数据仅累积 "+have+" 日，未满 "+w+" 日，仅供参考"));
+    grid.append(b);
+  });
+  return grid;
+}
+function renderDetail(sel){
+  const d=$("detail"); d.replaceChildren();
+  if(!sel){d.append(h("div","empty","暂无已分类的行业"));return}
+  const it=sel.it;
+  const head=h("div","dhead"); head.append(h("span","name",it.industry)); head.append(h("span","dtag",QMETA[sel.q].title+"（"+QMETA[sel.q].tag+"）"));
+  const rt=h("div","dr");
+  if(it.today_net!=null){const l=h("div","dline",""); l.append("今日主力净流入 "); l.append(h("span",cls(it.today_net),signed(it.today_net)+"亿")); rt.append(l);}
+  if(it.etf) rt.append(h("div","dline"+(it.etf.status==="diverge"?" diverge":""),"ETF验证："+it.etf.text));
+  head.append(rt); d.append(head);
+  d.append(h("div","sub","条形＝各周期主力净流入金额（亿元）；右列＝主力净流入占同期成交额比例。"));
+  const cb=h("div","cbox"); d.append(cb);
+  cb.append(detailChart(it, Math.max(260,cb.clientWidth)));
+  d.append(h("div","sub","行业内个股 · 各周期主力净流入 TOP3"));
+  if(it.stocks) d.append(stockBlocks(it)); else d.append(h("div","empty","该象限为持续撤离，不展示个股。"));
+}
+
+/* ---------- 顶部信息 ---------- */
+const meta = $("meta");
+meta.append(h("span","","交易日 "+DATA.trade_date));
+meta.append(h("span","","更新于 "+DATA.updated_at+"（北京时间）"));
+meta.append(h("span","badge "+(DATA.mode==="final"?"final":""), DATA.mode==="final"?"盘后定稿":"盘中暂计"));
+meta.append(h("span","","已累积历史 "+DATA.history_days+" 个交易日"));
+$("foot").textContent = DATA.insufficient.length
+  ? "历史数据不足、暂未分类的行业："+DATA.insufficient.join("、")
+  : "";
+
+/* ---------- 四象限图 ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!==undefined)e.textContent=text;return e}
+const ALL = [];
+order.forEach(q=>DATA.quadrants[q].forEach(it=>ALL.push({q,it})));
+let selected = ALL.length ? ALL[0] : null;
+let hover = null;
+
+function ticksFor(lo, hi, target){
+  const raw=(hi-lo)/target, p=Math.pow(10,Math.floor(Math.log10(raw))), f=raw/p;
+  const st=(f<1.5?1:f<3?2:f<7?5:10)*p, out=[];
+  for(let v=Math.ceil(lo/st-1e-9)*st; v<=hi+1e-9; v+=st) out.push(Math.round(v/st)*st);
+  return {st, out};
+}
+const tickText = (v,st) => (v>0?"+":"")+v.toFixed(st>=1?0:(st>=0.1?1:2))+"%";
+
+function showDetail(sel, scroll){
+  renderDetail(sel);
+  if(scroll) $("detailPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function draw(){
+  const wrap = $("chart"); wrap.replaceChildren();
+  if(!ALL.length){wrap.append(h("div","empty","暂无已分类的行业"));return}
+  const W = Math.max(300, wrap.clientWidth || 360);
+  const H = W < 520 ? Math.max(380, Math.round(W*1.05)) : Math.max(440, Math.min(560, Math.round(W*0.55)));
+  const m = {l: W<520?58:60, r:14, t:14, b:46};
+  const pw = W-m.l-m.r, ph = H-m.t-m.b;
+
+  const amt=a=>Math.abs((a.it.nets||{})[String(a.it.long_basis)]||0), amax=Math.max(1e-9,...ALL.map(amt));
+  const R=a=>3.5+(W<520?5:8)*Math.sqrt(amt(a)/amax);
+  const xs = ALL.map(a=>a.it.long), ys = ALL.map(a=>a.it.short);
+  const padOf = (lo,hi)=>{const sp=(hi-lo)||1; return sp*(W<520?0.2:0.1)};
+  let x0=Math.min(0,...xs), x1=Math.max(0,...xs), y0=Math.min(0,...ys), y1=Math.max(0,...ys);
+  const px=padOf(x0,x1), py=padOf(y0,y1); x0-=px; x1+=px; y0-=py; y1+=py;
+  const X = v => m.l + (v-x0)/(x1-x0)*pw;
+  const Y = v => m.t + (1-(v-y0)/(y1-y0))*ph;
+
+  const svg = s("svg",{viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"行业资金四象限散点图：横轴长期，纵轴短期"});
+  const xt = ticksFor(x0,x1,W<520?4:6), yt = ticksFor(y0,y1,W<520?5:6);
+
+  // 网格与刻度（细实线、低对比）
+  xt.out.forEach(v=>{
+    svg.append(s("line",{x1:X(v),x2:X(v),y1:m.t,y2:m.t+ph,stroke:"var(--grid)","stroke-width":1}));
+    svg.append(s("text",{x:X(v),y:m.t+ph+16,"text-anchor":"middle","font-size":11,fill:"var(--axtxt)"},tickText(v,xt.st)));
+  });
+  yt.out.forEach(v=>{
+    svg.append(s("line",{x1:m.l,x2:m.l+pw,y1:Y(v),y2:Y(v),stroke:"var(--grid)","stroke-width":1}));
+    svg.append(s("text",{x:m.l-6,y:Y(v)+4,"text-anchor":"end","font-size":11,fill:"var(--axtxt)"},tickText(v,yt.st)));
+  });
+  // 零轴（分隔四个象限）
+  svg.append(s("line",{x1:X(0),x2:X(0),y1:m.t,y2:m.t+ph,stroke:"var(--axis)","stroke-width":1.5}));
+  svg.append(s("line",{x1:m.l,x2:m.l+pw,y1:Y(0),y2:Y(0),stroke:"var(--axis)","stroke-width":1.5}));
+  // 轴标题
+  svg.append(s("text",{x:m.l+pw/2,y:H-6,"text-anchor":"middle","font-size":12,fill:"var(--mute)"},(W<520?"长期：主力净流入占同期成交额比例（250日）→":"长期：主力净流入占同期成交额比例（250日，不足用120日）→ 流入")));
+  svg.append(s("text",{x:11,y:m.t+ph/2,"text-anchor":"middle","font-size":12,fill:"var(--mute)",transform:"rotate(-90 11 "+(m.t+ph/2)+")"},(W<520?"短期：主力净流入占同期成交额比例（20日）→":"短期：主力净流入占同期成交额比例（20日）→ 流入")));
+
+  // 象限角标：q1右上 q2左上 q3右下 q4左下
+  const cnt = q => DATA.quadrants[q].length;
+  const top = m.t, bot = m.t+ph;
+  const corners = [   // [象限, x, 第一行y, 第二行y, 对齐]；第一行=象限名称，第二行=注释
+    ["q1", m.l+pw-6, top+14, top+27, "end"], ["q2", m.l+6, top+14, top+27, "start"],
+    ["q3", m.l+pw-6, bot-21, bot-8, "end"], ["q4", m.l+6, bot-21, bot-8, "start"]];
+  const reserved = [];
+  corners.forEach(([q,x,y1,y2,a])=>{
+    const t1 = QMETA[q].title+"("+cnt(q)+")", t2 = "（"+QMETA[q].tag+"）";
+    svg.append(s("text",{x,y:y1,"text-anchor":a,"font-size":11,fill:"var(--mute)","font-weight":600},t1));
+    svg.append(s("text",{x,y:y2,"text-anchor":a,"font-size":11,fill:"var(--mute)"},t2));
+    const w = Math.max(t1.length,t2.length)*11;
+    reserved.push({x0:a==="end"?x-w:x, x1:a==="end"?x:x+w, y0:y1-13, y1:y2+3});
+  });
+
+  // 选择性标注：每个象限里离原点最远的前3个 + 当前选中
+  const nx = v=>v/((x1-x0)||1), ny = v=>v/((y1-y0)||1);
+  const cand = [];
+  order.forEach(q=>{
+    ALL.filter(a=>a.q===q).sort((a,b)=>Math.hypot(nx(b.it.long),ny(b.it.short))-Math.hypot(nx(a.it.long),ny(a.it.short))).slice(0,3).forEach(a=>cand.push(a));
+  });
+  if(selected && !cand.includes(selected)) cand.unshift(selected);
+  const placed = reserved.slice(), labels = new Map();
+  const pointRects = ALL.map(a=>({a,x0:X(a.it.long)-R(a)-2,x1:X(a.it.long)+R(a)+2,y0:Y(a.it.short)-R(a)-2,y1:Y(a.it.short)+R(a)+2}));
+  const overlap = (r,p)=>!(r.x1<p.x0||r.x0>p.x1||r.y1<p.y0||r.y0>p.y1);
+  cand.sort((a,b)=>(b===selected)-(a===selected));
+  cand.forEach(a=>{
+    const cx=X(a.it.long), cy=Y(a.it.short), w=a.it.industry.length*11+2, rr=R(a)+3;
+    const opts = [
+      {r:{x0:cx+rr,x1:cx+rr+w,y0:cy-7,y1:cy+7}, t:{x:cx+rr,y:cy+4,anchor:"start"}},
+      {r:{x0:cx-rr-w,x1:cx-rr,y0:cy-7,y1:cy+7}, t:{x:cx-rr,y:cy+4,anchor:"end"}},
+      {r:{x0:cx-w/2,x1:cx+w/2,y0:cy-rr-14,y1:cy-rr}, t:{x:cx,y:cy-rr-4,anchor:"middle"}},
+      {r:{x0:cx-w/2,x1:cx+w/2,y0:cy+rr,y1:cy+rr+14}, t:{x:cx,y:cy+rr+11,anchor:"middle"}}];
+    for(const o of opts){
+      const inside = o.r.x0>=m.l && o.r.x1<=m.l+pw && o.r.y0>=m.t && o.r.y1<=m.t+ph;
+      const hit = placed.some(p=>overlap(o.r,p)) || pointRects.some(p=>p.a!==a && overlap(o.r,p));
+      if(inside && !hit){placed.push(o.r); labels.set(a,o.t); break}
+    }
+  });
+
+  // 点（2px 表面色环；选中=墨色描边；悬停略放大）
+  const g = s("g",{});
+  ALL.forEach(a=>{
+    const cx=X(a.it.long), cy=Y(a.it.short);
+    const on = a===selected, hv = a===hover;
+    const grp = s("g",{class:"pt",tabindex:0,role:"button","aria-label":a.it.industry+"，短期"+fmt(a.it.short)+"，长期"+fmt(a.it.long)});
+    const rb=R(a);
+    grp.append(s("circle",{cx,cy,r:Math.max(14,rb+4),fill:"transparent"}));           // 24px+ 的点击/悬停范围
+    grp.append(s("circle",{class:"dot",cx,cy,r:rb,fill:"var(--pt)","fill-opacity":.8,stroke:on?"var(--ink)":"var(--card)","stroke-width":2}));
+    const dot = grp.querySelector(".dot");
+    grp.addEventListener("pointerenter",()=>{hover=a;dot.setAttribute("r",rb+1.5);tip(a,cx,cy)});
+    grp.addEventListener("pointerleave",()=>{hover=null;dot.setAttribute("r",rb);hideTip()});
+    grp.addEventListener("focus",()=>tip(a,cx,cy));
+    grp.addEventListener("blur",hideTip);
+    grp.addEventListener("click",()=>choose(a));
+    grp.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();choose(a)}});
+    g.append(grp);
+  });
+  svg.append(g);
+  labels.forEach((p,a)=>{
+    svg.append(s("text",{x:p.x,y:p.y,"text-anchor":p.anchor,"font-size":11,fill:"var(--ink)","pointer-events":"none","paint-order":"stroke",stroke:"var(--card)","stroke-width":3,"stroke-linejoin":"round"},a.it.industry));
+  });
+  wrap.append(svg);
+
+  const tipEl = h("div","tip"); wrap.append(tipEl);
+  function tip(a,cx,cy){
+    tipEl.replaceChildren();
+    tipEl.append(h("div","n",a.it.industry+" · "+QMETA[a.q].title));
+    const v1=h("div","v",""); v1.append("20日主力净流入占同期成交额比例 "); v1.append(h("span",cls(a.it.short),fmt(a.it.short))); tipEl.append(v1);
+    const v2=h("div","v",""); v2.append(a.it.long_basis+"日主力净流入占同期成交额比例 "); v2.append(h("span",cls(a.it.long),fmt(a.it.long))); tipEl.append(v2);
+    const nv=(a.it.nets||{})[String(a.it.long_basis)];
+    if(nv!=null){const v3=h("div","v",""); v3.append(a.it.long_basis+"日主力净流入 "); v3.append(h("span",cls(nv),signed(nv)+"亿")); tipEl.append(v3); tipEl.append(h("div","tg","圆圈大小＝该金额的绝对值"));}
+    tipEl.style.display="block";
+    const sx = cx/W*wrap.clientWidth, sy = cy/H*wrap.clientHeight;
+    const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    let left = sx+12; if(left+tw>wrap.clientWidth) left = sx-12-tw; if(left<0) left=0;
+    let topv = sy-th-10; if(topv<0) topv = sy+12;
+    tipEl.style.left = left+"px"; tipEl.style.top = topv+"px";
+  }
+  function hideTip(){tipEl.style.display="none"}
+}
+
+function choose(a){selected=a; draw(); showDetail(a,true)}
+
+draw(); showDetail(selected,false); renderRank();
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{draw();renderRank();renderDetail(selected)},120)});
+</script>
+</body>
+</html>
