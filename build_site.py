@@ -169,7 +169,9 @@ function gtShow(title, rows, x, y){
 }
 function gtShowNode(node, x, y){gt.replaceChildren(node); gtPlace(x,y); gtArm()}
 let gtTouch = false, gtTimer = null;
+let tapKey = null, tapTimer = null;
 const gtHide = () => {clearTimeout(gtTimer); gt.style.display="none"};
+const setTap = k => {tapKey=k; clearTimeout(tapTimer); tapTimer=setTimeout(()=>{tapKey=null},3000)};
 // 手机：浮窗2.2秒后自动消失；点按别处或滚动页面也立即消失
 function gtArm(){clearTimeout(gtTimer); if(gtTouch) gtTimer=setTimeout(gtHide,2200)}
 document.addEventListener("pointerdown",e=>{gtTouch = e.pointerType!=="mouse"; if(gtTouch) gtHide()},true);
@@ -227,7 +229,11 @@ function rankChartAll(W){
       bindTip(gr, r.industry+" · "+g.w+"日", [["主力净流入（扣除全市场）",signed(r.net)+"亿"],["主力净流入占同期成交额比例（扣除全市场）",fmt(r.ratio)],["所属象限",qTitle(r.q)]]);
       if(a){gr.setAttribute("tabindex","0");gr.setAttribute("role","button");
         gr.setAttribute("aria-label",g.w+"日 "+r.industry+"，主力净流入"+signed(r.net)+"亿，点击查看详情");
-        gr.addEventListener("click",()=>choose(a));
+        gr.addEventListener("click",e=>{
+          if(gtTouch && tapKey!==g.w+r.industry){   // 手机：第一次点按先显示浮窗，再点一次才进入行业详情
+            gtShow(r.industry+" · "+g.w+"日（再点一次查看行业详情）",[["主力净流入（扣除全市场）",signed(r.net)+"亿"],["主力净流入占同期成交额比例（扣除全市场）",fmt(r.ratio)],["所属象限",qTitle(r.q)]],e.clientX,e.clientY);
+            setTap(g.w+r.industry); gtArm(); return}
+          choose(a)});
         gr.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();choose(a)}});}
       svg.append(gr);
     });
@@ -426,7 +432,10 @@ function draw(){
     grp.addEventListener("pointerleave",()=>{hover=null;dot.setAttribute("r",rb);hideTip()});
     grp.addEventListener("focus",()=>tip(a,cx,cy));
     grp.addEventListener("blur",hideTip);
-    grp.addEventListener("click",()=>choose(a));
+    grp.addEventListener("click",()=>{
+      if(gtTouch && tapKey!=="sc"+a.it.industry){   // 手机：第一次点按显示数值，再点一次进入详情
+        tip(a,cx,cy); setTap("sc"+a.it.industry); clearTimeout(gtTimer); gtTimer=setTimeout(hideTip,2600); return}
+      choose(a)});
     grp.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();choose(a)}});
     g.append(grp);
   });

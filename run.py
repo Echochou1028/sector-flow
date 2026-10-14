@@ -137,11 +137,14 @@ def run_demo():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "industry"])
+    ap.add_argument("mode", choices=["intraday", "final", "etf", "demo", "backfill", "probe", "probe_em", "industry"])
     m = ap.parse_args().mode
     if m == "industry":
         import fetch
         fetch.get_industry_map(fetch.fetch_stock_today()["code"].tolist(), force=True)
+    elif m == "probe_em":
+        import probe_em
+        probe_em.run()
     elif m == "probe":
         import probe
         probe.run()
