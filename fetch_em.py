@@ -54,6 +54,11 @@ def fetch_basic_info(max_pages=80):
     return df
 
 
+# 东财少数股票（约140只）的行业仍是旧版一级名称，这里并入新版一级，避免出现只有几只股票的"小行业"
+ALIAS1 = {"信息技术": "计算机", "互联网": "计算机", "电气设备": "电力设备", "电子设备": "电子", "建筑": "建筑装饰",
+          "交运设备": "汽车", "文化传媒": "传媒", "休闲、生活及专业服务": "社会服务", "化石能源": "石油石化"}
+
+
 def level_name(text, scheme, level):
     """从'a-b-c'形式的行业文本取指定层级的名称；缺失返回 None。
     东财行业 level=1/2/3：取前 level 段，用'-'连接；证监会 level=1 门类、2 大类（只取大类名）。"""
@@ -64,4 +69,8 @@ def level_name(text, scheme, level):
         return None
     if scheme == "csrc":
         return parts[0] if level <= 1 else (parts[1] if len(parts) > 1 else parts[0])
+    if parts[0] == "化石能源" and len(parts) > 1 and "煤" in parts[1]:
+        parts[0] = "煤炭"
+    else:
+        parts[0] = ALIAS1.get(parts[0], parts[0])
     return "-".join(parts[:level])
