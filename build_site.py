@@ -120,7 +120,7 @@ footer{color:var(--mute);font-size:12px;margin:24px 0 8px}
 <h1>行业资金流向</h1>
 <div class="meta" id="meta"></div>
 <div class="note">
-口径：行业按申万一级行业分类（取自新浪个股资料页，共28个）；行业主力净流入＝行业内个股主力净流入（新浪大单口径，估算值）逐日汇总，占比＝主力净流入合计 ÷ 同期成交额合计。红色=流入（条向右），绿色=流出（条向左）。
+口径：行业按申万一级行业分类（取自新浪个股资料页，共28个；公司转型或更名后分类可能滞后，可在 industry_override.json 手动修正）；行业主力净流入＝行业内个股主力净流入（新浪大单口径，估算值）逐日汇总，占比＝主力净流入合计 ÷ 同期成交额合计。因新浪大单口径的全市场合计偏正，行业的净流入和占比均已扣除全市场同期水平，只反映相对强弱（红色=强于全市场，绿色=弱于全市场）。红色=流入（条向右），绿色=流出（条向左）。
 短期=近20日，长期=近250日（历史不足时用120日，详情里会标注）。
 盘中数据为"今日暂计"，盘后定稿；ETF验证为T+1。本页是资金流向观察工具，不构成买卖建议。
 </div>
@@ -165,10 +165,15 @@ function gtPlace(x,y){
 function gtShow(title, rows, x, y){
   gt.replaceChildren(); gt.append(h("div","n",title));
   rows.forEach(([k,v])=>{const d=h("div","v"); d.append(k+" "); d.append(v); gt.append(d)});
-  gtPlace(x,y);
+  gtPlace(x,y); gtArm();
 }
-function gtShowNode(node, x, y){gt.replaceChildren(node); gtPlace(x,y)}
-const gtHide = () => {gt.style.display="none"};
+function gtShowNode(node, x, y){gt.replaceChildren(node); gtPlace(x,y); gtArm()}
+let gtTouch = false, gtTimer = null;
+const gtHide = () => {clearTimeout(gtTimer); gt.style.display="none"};
+// 手机：浮窗2.2秒后自动消失；点按别处或滚动页面也立即消失
+function gtArm(){clearTimeout(gtTimer); if(gtTouch) gtTimer=setTimeout(gtHide,2200)}
+document.addEventListener("pointerdown",e=>{gtTouch = e.pointerType!=="mouse"; if(gtTouch) gtHide()},true);
+window.addEventListener("scroll",gtHide,{passive:true});
 function bindTip(el, title, rows){
   el.addEventListener("pointermove",e=>gtShow(title,rows,e.clientX,e.clientY));
   el.addEventListener("pointerleave",gtHide);
@@ -219,7 +224,7 @@ function rankChartAll(W){
       gr.append(s("path",{d:barPath(x0,len,pos?1:-1,cy-th/2,th),fill:pos?"var(--in)":"var(--out)"}));
       gr.append(s("text",{x:pos?x0+len+6:x0-len-6,y:cy+4,"text-anchor":pos?"start":"end","font-size":12,"font-weight":600,fill:"var(--ink)"},signed(r.net)+"亿"));
       gr.append(s("text",{x:pos?x0-8:x0+8,y:cy+4,"text-anchor":pos?"end":"start","font-size":13,fill:"var(--ink)"},r.industry));
-      bindTip(gr, r.industry+" · "+g.w+"日", [["主力净流入",signed(r.net)+"亿"],["主力净流入占同期成交额比例",fmt(r.ratio)],["所属象限",qTitle(r.q)]]);
+      bindTip(gr, r.industry+" · "+g.w+"日", [["主力净流入（扣除全市场）",signed(r.net)+"亿"],["主力净流入占同期成交额比例（扣除全市场）",fmt(r.ratio)],["所属象限",qTitle(r.q)]]);
       if(a){gr.setAttribute("tabindex","0");gr.setAttribute("role","button");
         gr.setAttribute("aria-label",g.w+"日 "+r.industry+"，主力净流入"+signed(r.net)+"亿，点击查看详情");
         gr.addEventListener("click",()=>choose(a));
@@ -261,7 +266,7 @@ function detailChart(it, W){
       g.append(s("text",{x:p?x0+len+6:x0-len-6,y:cy+4,"text-anchor":p?"start":"end","font-size":12,"font-weight":600,fill:"var(--ink)"},signed(v)+"亿"));
     }
     g.append(s("text",{x:W-2,y:cy+4,"text-anchor":"end","font-size":12,fill:"var(--ink)"},fmt(ratio)));
-    bindTip(g, it.industry+" · "+w+"日", [["主力净流入",signed(v)+"亿"],["主力净流入占同期成交额比例",fmt(ratio)]]);
+    bindTip(g, it.industry+" · "+w+"日", [["主力净流入（扣除全市场）",signed(v)+"亿"],["主力净流入占同期成交额比例（扣除全市场）",fmt(ratio)]]);
     svg.append(g);
   });
   return svg;
@@ -290,10 +295,10 @@ function renderDetail(sel){
   const it=sel.it;
   const head=h("div","dhead"); head.append(h("span","name",it.industry)); head.append(h("span","dtag",QMETA[sel.q].title+"（"+QMETA[sel.q].tag+"）"));
   const rt=h("div","dr");
-  if(it.today_net!=null){const l=h("div","dline",""); l.append("今日主力净流入 "); l.append(h("span",cls(it.today_net),signed(it.today_net)+"亿")); rt.append(l);}
+  if(it.today_net!=null){const l=h("div","dline",""); l.append("今日主力净流入（扣除全市场） "); l.append(h("span",cls(it.today_net),signed(it.today_net)+"亿")); rt.append(l);}
   if(it.etf) rt.append(h("div","dline"+(it.etf.status==="diverge"?" diverge":""),"ETF验证："+it.etf.text));
   head.append(rt); d.append(head);
-  d.append(h("div","sub","条形＝各周期主力净流入金额（亿元）；右列＝主力净流入占同期成交额比例。"));
+  d.append(h("div","sub","条形＝各周期主力净流入金额（扣除全市场，亿元）；右列＝主力净流入占同期成交额比例（扣除全市场）。"));
   const cb=h("div","cbox"); d.append(cb);
   cb.append(detailChart(it, Math.max(260,cb.clientWidth)));
   d.append(h("div","sub","行业内个股 · 各周期主力净流入 TOP3"));
@@ -364,8 +369,8 @@ function draw(){
   svg.append(s("line",{x1:X(0),x2:X(0),y1:m.t,y2:m.t+ph,stroke:"var(--axis)","stroke-width":1.5}));
   svg.append(s("line",{x1:m.l,x2:m.l+pw,y1:Y(0),y2:Y(0),stroke:"var(--axis)","stroke-width":1.5}));
   // 轴标题
-  svg.append(s("text",{x:m.l+pw/2,y:H-6,"text-anchor":"middle","font-size":12,fill:"var(--mute)"},(W<520?"长期：主力净流入占同期成交额比例（250日）→":"长期：主力净流入占同期成交额比例（250日，不足用120日）→ 流入")));
-  svg.append(s("text",{x:11,y:m.t+ph/2,"text-anchor":"middle","font-size":12,fill:"var(--mute)",transform:"rotate(-90 11 "+(m.t+ph/2)+")"},(W<520?"短期：主力净流入占同期成交额比例（20日）→":"短期：主力净流入占同期成交额比例（20日）→ 流入")));
+  svg.append(s("text",{x:m.l+pw/2,y:H-6,"text-anchor":"middle","font-size":W<520?10.5:12,fill:"var(--mute)"},(W<520?"长期250日 主力净流入占同期成交额比例（扣除全市场）→":"长期：主力净流入占同期成交额比例（扣除全市场）（250日，不足用120日）→ 流入")));
+  svg.append(s("text",{x:11,y:m.t+ph/2,"text-anchor":"middle","font-size":W<520?10.5:12,fill:"var(--mute)",transform:"rotate(-90 11 "+(m.t+ph/2)+")"},(W<520?"短期20日 主力净流入占同期成交额比例（扣除全市场）→":"短期：主力净流入占同期成交额比例（扣除全市场）（20日）→ 流入")));
 
   // 象限角标：q1右上 q2左上 q3右下 q4左下
   const cnt = q => DATA.quadrants[q].length;
@@ -435,10 +440,10 @@ function draw(){
   function tip(a,cx,cy){
     tipEl.replaceChildren();
     tipEl.append(h("div","n",a.it.industry+" · "+QMETA[a.q].title));
-    const v1=h("div","v",""); v1.append("20日主力净流入占同期成交额比例 "); v1.append(h("span",cls(a.it.short),fmt(a.it.short))); tipEl.append(v1);
-    const v2=h("div","v",""); v2.append(a.it.long_basis+"日主力净流入占同期成交额比例 "); v2.append(h("span",cls(a.it.long),fmt(a.it.long))); tipEl.append(v2);
+    const v1=h("div","v",""); v1.append("20日主力净流入占同期成交额比例（扣除全市场） "); v1.append(h("span",cls(a.it.short),fmt(a.it.short))); tipEl.append(v1);
+    const v2=h("div","v",""); v2.append(a.it.long_basis+"日主力净流入占同期成交额比例（扣除全市场） "); v2.append(h("span",cls(a.it.long),fmt(a.it.long))); tipEl.append(v2);
     const nv=(a.it.nets||{})[String(a.it.long_basis)];
-    if(nv!=null){const v3=h("div","v",""); v3.append(a.it.long_basis+"日主力净流入 "); v3.append(h("span",cls(nv),signed(nv)+"亿")); tipEl.append(v3); tipEl.append(h("div","tg","圆圈大小＝该金额的绝对值"));}
+    if(nv!=null){const v3=h("div","v",""); v3.append(a.it.long_basis+"日主力净流入（扣除全市场） "); v3.append(h("span",cls(nv),signed(nv)+"亿")); tipEl.append(v3); tipEl.append(h("div","tg","圆圈大小＝该金额的绝对值"));}
     tipEl.style.display="block";
     const sx = cx/W*wrap.clientWidth, sy = cy/H*wrap.clientHeight;
     const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;

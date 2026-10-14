@@ -32,3 +32,5 @@ QUADRANTS = {
     "q3": {"title": "短期流出、长期流入", "tag": "回调中资金未撤，值得跟踪", "stocks": True},
     "q4": {"title": "短期流出、长期流出", "tag": "持续撤离", "stocks": False},
 }
+
+RELATIVE_TO_MARKET = True   # 行业净流入/占比统一扣除全市场同期水平（新浪大单口径整体偏正，不扣除则几乎所有行业都是流入）

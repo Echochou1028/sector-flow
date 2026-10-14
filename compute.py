@@ -6,8 +6,21 @@ import pandas as pd
 import config
 
 
-def window_ratios(g):
-    """单个行业的多窗口主力净流入占成交额比例。返回 {窗口: 比例或None}、有效天数。"""
+def market_ratios(full):
+    """全市场各窗口的主力净流入占成交额比例（所有行业合计）。
+    新浪大单口径的"主力净流入"整体偏正（全市场合计并不为0），不扣除的话几乎所有行业都显示为流入，
+    所以行业指标统一扣除全市场同期水平，只看相对强弱。"""
+    d = full.groupby("date")[["net", "amount"]].sum().sort_index()
+    out = {}
+    for n in config.WINDOWS:
+        t = d.tail(n)
+        t = t[t["amount"] > 0]
+        out[n] = float(t["net"].sum() / t["amount"].sum()) if len(t) and t["amount"].sum() > 0 else 0.0
+    return out
+
+
+def window_ratios(g, mk=None):
+    """单个行业的多窗口主力净流入占成交额比例（mk 给定时扣除全市场同期比例）。返回 {窗口: 比例或None}、有效天数。"""
     g = g.sort_values("date")
     out = {}
     for n in config.WINDOWS:
@@ -19,7 +32,7 @@ def window_ratios(g):
         if len(t) < n * config.MIN_COVERAGE:
             out[n] = None
             continue
-        out[n] = float(t["net"].sum() / t["amount"].sum())
+        out[n] = float(t["net"].sum() / t["amount"].sum()) - (mk.get(n, 0.0) if mk else 0.0)
     return out, len(g)
 
 
@@ -48,11 +61,18 @@ def classify(ratios):
     return q, short, long_v, basis
 
 
-def window_nets(g):
-    """行业各窗口主力净流入合计（亿元）。覆盖不足返回 None。"""
+def window_nets(g, mk=None):
+    """行业各窗口主力净流入合计（亿元；mk 给定时扣除 全市场同期比例×本行业成交额）。覆盖不足返回 None。"""
     g = g.sort_values("date")
-    return {n: (None if len(g) < n * config.MIN_COVERAGE else round(float(g.tail(n)["net"].sum()) / 1e8, 2))
-            for n in config.WINDOWS}
+    out = {}
+    for n in config.WINDOWS:
+        if len(g) < n * config.MIN_COVERAGE:
+            out[n] = None
+            continue
+        t = g.tail(n)
+        v = float(t["net"].sum()) - (mk.get(n, 0.0) * float(t["amount"].sum()) if mk else 0.0)
+        out[n] = round(v / 1e8, 2)
+    return out
 
 
 def _members(imap):
@@ -138,13 +158,16 @@ def build_result(history, today_df, imap, stocks_df, stock_hist, mode, trade_dat
     t = today_df.assign(date=trade_date)[["date", "industry", "net", "amount"]]
     full = pd.concat([h, t], ignore_index=True)
 
+    mk = market_ratios(full) if config.RELATIVE_TO_MARKET else None
+    ta = float(today_df["amount"].sum())
+    today_mk = float(today_df["net"].sum()) / ta if (config.RELATIVE_TO_MARKET and ta > 0) else 0.0
     today_info = today_df.set_index("industry")
     quadrants = {k: [] for k in config.QUADRANTS}
     insufficient = []
     per_ind, qmap = {}, {}
     for ind, g in full.groupby("industry"):
-        ratios, days = window_ratios(g)
-        nets = window_nets(g)
+        ratios, days = window_ratios(g, mk)
+        nets = window_nets(g, mk)
         per_ind[ind] = (nets, ratios)
         q, short, long_v, basis = classify(ratios)
         if q is None:
@@ -160,7 +183,8 @@ def build_result(history, today_df, imap, stocks_df, stock_hist, mode, trade_dat
             "long_basis": basis,
             "days": days,
             "nets": {str(k): v for k, v in nets.items()},
-            "today_net": None if info is None or pd.isna(info["net"]) else round(info["net"] / 1e8, 2),
+            "today_net": None if info is None or pd.isna(info["net"]) else round(
+                (info["net"] - today_mk * (0 if pd.isna(info["amount"]) else info["amount"])) / 1e8, 2),
             "stocks": top_stocks(ind, imap, sums, cov, stocks_df) if config.QUADRANTS[q]["stocks"] else None,
             "etf": None,
         }

@@ -61,6 +61,30 @@ def finish(result):
     print(f"[ok] {result['mode']} {result['trade_date']} 象限数量 {n} 数据不足 {len(result['insufficient'])}")
 
 
+def apply_override(imap, stocks_df):
+    """industry_override.json：{"股票代码或名称": "申万一级行业名"}，用于修正分类滞后（转型/更名）的个股。"""
+    p = config.ROOT / "industry_override.json" if hasattr(config, "ROOT") else None
+    if p is None or not p.exists():
+        return imap
+    ov = {k: v for k, v in json.loads(p.read_text(encoding="utf-8")).items() if not k.startswith("_")}
+    if not ov:
+        return imap
+    name2code = dict(zip(stocks_df["name"], stocks_df["code"]))
+    imap = {k: (list(v) if not k.startswith("_") else v) for k, v in imap.items()}
+    for key, target in ov.items():
+        code = key if key in set(stocks_df["code"]) else name2code.get(key)
+        if not code:
+            print(f"[override] 找不到股票 {key}，已忽略"); continue
+        if target not in imap or target.startswith("_"):
+            imap[target] = []
+        for ind, cs in imap.items():
+            if not ind.startswith("_") and code in cs:
+                cs.remove(code)
+        imap[target].append(code)
+        print(f"[override] {key}({code}) → {target}")
+    return imap
+
+
 def run_intraday_or_final(mode):
     import fetch
     today = now_bj().date()
@@ -69,7 +93,7 @@ def run_intraday_or_final(mode):
         return
     trade_date = today.isoformat()
     stocks_df = fetch.fetch_stock_today()            # 不足 MIN_STOCKS 只会直接报错中止，避免写入残缺数据
-    imap = fetch.get_industry_map(stocks_df["code"].tolist())
+    imap = apply_override(fetch.get_industry_map(stocks_df["code"].tolist()), stocks_df)
     if mode == "final":
         save_stock_day(stocks_df, trade_date)
     stock_hist = load_stock_hist()
