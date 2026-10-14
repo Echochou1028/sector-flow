@@ -1,49 +1,56 @@
-"""探测新浪 fenlei=2 的分类版本结构（只打印）：python run.py probe_class"""
+"""探测：证监会2012版（新浪 fenlei=2 中的一部分）覆盖情况 + 未覆盖个股的行业来源（只打印）：python run.py probe_class"""
 import re
 import time
-from collections import Counter, defaultdict
+from collections import Counter
+
+import requests
 
 import fetch
 import fetch_sina
 
+# 证监会2012版行业大类编号范围（按门类字母）
+R2012 = {"A": (1, 5), "B": (6, 12), "C": (13, 43), "D": (44, 46), "E": (47, 50), "F": (51, 52), "G": (53, 60),
+         "H": (61, 62), "I": (63, 65), "J": (66, 69), "K": (70, 70), "L": (71, 72), "M": (73, 75), "N": (76, 78),
+         "O": (79, 81), "P": (82, 82), "Q": (83, 84), "R": (85, 88), "S": (89, 99)}
+
+
+def is2012(cat):
+    m = re.match(r"^hangye_Z([A-S])(\d\d)$", cat)
+    if not m:
+        return False
+    lo, hi = R2012[m.group(1)]
+    return lo <= int(m.group(2)) <= hi
+
 
 def run():
     d = fetch_sina.get_json("MoneyFlow.ssl_bkzj_bk", {"page": 1, "num": 300, "sort": "netamount", "asc": 0, "fenlei": 2})
-    bks = [(r["name"], r["category"]) for r in d]
+    bks = [(r["name"], r["category"]) for r in d if is2012(r["category"])]
+    print(f"按2012版编号规则选出 {len(bks)} 个板块")
     st = fetch.fetch_stock_today()
     have = set(st["code"])
     mem = {}
     for name, cat in bks:
         mem[cat] = (name, fetch_sina.industry_cons(cat))
         time.sleep(0.15)
-    print("=== 全部板块 代码|名称|成分数")
-    for cat, (name, v) in sorted(mem.items()):
-        print(f"{cat}|{name}|{len(v)}")
-    # 按代码形态分组
-    groups = defaultdict(list)
-    for cat in mem:
-        suf = cat.replace("hangye_", "")
-        shape = re.sub(r"[A-Z]", "A", re.sub(r"\d", "9", suf))
-        groups[shape].append(cat)
-    print("\n=== 按代码形态分组（A=字母 9=数字）")
-    for shape, cats in sorted(groups.items()):
-        cnt = Counter(c for k in cats for c in mem[k][1])
-        nz = [k for k in cats if mem[k][1]]
-        print(f"形态 {shape}: 板块{len(cats)}个(非空{len(nz)})，覆盖个股{len(set(cnt) & have)}只，最大重复{max(cnt.values()) if cnt else 0}，每股平均所属{(sum(cnt.values())/len(cnt)) if cnt else 0:.2f}个")
-    # ---- 未归属个股分析（466只问题）
-    allc = {c for _, v in mem.values() for c in v}
-    miss = st[~st["code"].isin(allc)]
-    print(f"\n=== 未被 fenlei=2 任何板块覆盖的个股：{len(miss)} 只")
-    print("代码前缀分布:", dict(Counter(miss["code"].str[:3]).most_common(8)))
-    print("名称含ST/退/N/C开头:", int(miss["name"].str.contains(r"ST|退|^N|^C", regex=True).sum()))
-    print("成交额合计(亿):", round(float(miss["amount"].sum()) / 1e8, 1), "占全市场", f"{float(miss['amount'].sum())/float(st['amount'].sum())*100:.1f}%")
-    print("示例:", "、".join(f"{r.name}({r.code})" for r in miss.head(30).itertuples()))
-    old = {}
-    for n, cat in fetch_sina.industry_list():
-        for c in fetch_sina.industry_cons(cat):
-            old[c] = n
-        time.sleep(0.15)
-    got = miss[miss["code"].isin(old)]
-    print(f"其中被新浪48行业覆盖的 {len(got)} 只，两套都没有的 {len(miss) - len(got)} 只")
-    print("两套都没有的示例:", "、".join(f"{r.name}({r.code})" for r in miss[~miss["code"].isin(old)].head(30).itertuples()))
+    cnt = Counter(c for _, v in mem.values() for c in v)
+    cov = set(cnt) & have
+    print(f"2012版覆盖 {len(cov)} 只，未覆盖 {len(have - cov)} 只；最大重复 {max(cnt.values())}；重复>1的股票 {sum(1 for v in cnt.values() if v > 1)} 只")
+    miss = st[~st["code"].isin(cov)]
+    print(f"未覆盖成交额占比 {float(miss['amount'].sum())/float(st['amount'].sum())*100:.1f}%；前缀 {dict(Counter(miss['code'].str[:3]).most_common(6))}")
+    print("未覆盖示例:", "、".join(f"{r.name}({r.code})" for r in miss.sort_values('amount', ascending=False).head(40).itertuples()))
+    print("各板块成分数:", "；".join(f"{n}:{len(v)}" for n, v in sorted(mem.values(), key=lambda x: -len(x[1]))[:60]))
+
+    print("\n=== 抓取新浪个股资料页，看能否取到所属行业（8只未覆盖股）")
+    for r in miss.sort_values("amount", ascending=False).head(8).itertuples():
+        for url in (f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpOtherInfo/stockid/{r.code}/menu_num/2.phtml",
+                    f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpInfo/stockid/{r.code}.phtml"):
+            try:
+                t = requests.get(url, headers=fetch_sina.UA, timeout=20)
+                t.encoding = "gb2312"
+                body = t.text
+                hits = re.findall(r"[^<>\s]{0,12}行业[^<>\s]{0,24}", body)[:6]
+                print(f"  {r.name}({r.code}) HTTP{t.status_code} 长度{len(body)} 行业相关: {hits}")
+            except Exception as e:  # noqa: BLE001
+                print(f"  {r.name}({r.code}) 失败 {type(e).__name__} {str(e)[:60]}")
+            time.sleep(0.3)
     print("请求统计:", fetch_sina.STATS)
