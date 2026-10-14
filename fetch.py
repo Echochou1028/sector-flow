@@ -152,6 +152,8 @@ def get_industry_map(codes=None, force=False):
         nm = fetch_em.level_name(r.board if scheme == "em" else r.csrc, scheme, level)
         if nm:
             by.setdefault(nm, []).append(r.code)
+    if scheme == "em" and level == 1:
+        by = _merge_small(by, stocks)
     if len(by) < 10:
         raise RuntimeError(f"行业分类只得到 {len(by)} 个，已中止")
     out = {"_date": dt.date.today().isoformat(), "_scheme": tag, "_stocks": stocks}
@@ -159,6 +161,45 @@ def get_industry_map(codes=None, force=False):
     p.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     print(f"[industry] {tag}：{len(by)} 个行业，覆盖 {sum(len(v) for v in by.values())} 只；"
           + "、".join(f"{k}{len(v)}" for k, v in sorted(by.items(), key=lambda x: -len(x[1]))[:40]))
+    return out
+
+
+_OLD2NEW = {"国防与装备": "国防军工", "家用": "家用电器", "建材": "建筑材料", "纺织服装": "纺织服饰",
+            "金融": "非银金融", "有色": "有色金属", "化工": "基础化工", "医药": "医药生物", "农业": "农林牧渔"}
+
+
+def _merge_small(by, stocks, min_n=15):
+    """东财个别股票仍用旧版一级名称，形成只有几只股票的小行业，历史不足而无法分类。
+    把股票数 < min_n 的小行业并入大行业：先按旧名对照，再按二级行业名在大行业中的多数归属，都不行则保持原样。"""
+    big = {k for k, v in by.items() if len(v) >= min_n}
+    small = [k for k in by if k not in big]
+    if not small:
+        return by
+    l2 = {}  # 二级名 -> {大行业: 数量}
+    for k in big:
+        for c in by[k]:
+            parts = [x.strip() for x in str(stocks[c][0]).split("-") if x.strip()]
+            if len(parts) > 1:
+                l2.setdefault(parts[1], {}).setdefault(k, 0)
+                l2[parts[1]][k] += 1
+    out = {k: list(by[k]) for k in big}
+    moved, kept = {}, []
+    for k in small:
+        for c in by[k]:
+            parts = [x.strip() for x in str(stocks[c][0]).split("-") if x.strip()]
+            tgt = _OLD2NEW.get(k) if _OLD2NEW.get(k) in big else None
+            if not tgt and len(parts) > 1 and parts[1] in l2:
+                tgt = max(l2[parts[1]].items(), key=lambda x: x[1])[0]
+            if tgt:
+                out[tgt].append(c)
+                moved[f"{k}->{tgt}"] = moved.get(f"{k}->{tgt}", 0) + 1
+            else:
+                out.setdefault(k, []).append(c)
+                kept.append(k)
+    if moved:
+        print("[industry] 小行业并入大行业：" + "、".join(f"{a}({n})" for a, n in moved.items()))
+    if kept:
+        print("[industry] 未能并入、保持原样：" + "、".join(sorted(set(kept))))
     return out
 
 
