@@ -1,56 +1,36 @@
-"""探测：证监会2012版（新浪 fenlei=2 中的一部分）覆盖情况 + 未覆盖个股的行业来源（只打印）：python run.py probe_class"""
+"""探测：新浪个股资料页中的"所属行业（申万）"页面结构（只打印）：python run.py probe_class"""
 import re
 import time
-from collections import Counter
 
 import requests
 
-import fetch
 import fetch_sina
 
-# 证监会2012版行业大类编号范围（按门类字母）
-R2012 = {"A": (1, 5), "B": (6, 12), "C": (13, 43), "D": (44, 46), "E": (47, 50), "F": (51, 52), "G": (53, 60),
-         "H": (61, 62), "I": (63, 65), "J": (66, 69), "K": (70, 70), "L": (71, 72), "M": (73, 75), "N": (76, 78),
-         "O": (79, 81), "P": (82, 82), "Q": (83, 84), "R": (85, 88), "S": (89, 99)}
-
-
-def is2012(cat):
-    m = re.match(r"^hangye_Z([A-S])(\d\d)$", cat)
-    if not m:
-        return False
-    lo, hi = R2012[m.group(1)]
-    return lo <= int(m.group(2)) <= hi
+URL = "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpOtherInfo/stockid/{}/menu_num/2.phtml"
 
 
 def run():
-    d = fetch_sina.get_json("MoneyFlow.ssl_bkzj_bk", {"page": 1, "num": 300, "sort": "netamount", "asc": 0, "fenlei": 2})
-    bks = [(r["name"], r["category"]) for r in d if is2012(r["category"])]
-    print(f"按2012版编号规则选出 {len(bks)} 个板块")
-    st = fetch.fetch_stock_today()
-    have = set(st["code"])
-    mem = {}
-    for name, cat in bks:
-        mem[cat] = (name, fetch_sina.industry_cons(cat))
-        time.sleep(0.15)
-    cnt = Counter(c for _, v in mem.values() for c in v)
-    cov = set(cnt) & have
-    print(f"2012版覆盖 {len(cov)} 只，未覆盖 {len(have - cov)} 只；最大重复 {max(cnt.values())}；重复>1的股票 {sum(1 for v in cnt.values() if v > 1)} 只")
-    miss = st[~st["code"].isin(cov)]
-    print(f"未覆盖成交额占比 {float(miss['amount'].sum())/float(st['amount'].sum())*100:.1f}%；前缀 {dict(Counter(miss['code'].str[:3]).most_common(6))}")
-    print("未覆盖示例:", "、".join(f"{r.name}({r.code})" for r in miss.sort_values('amount', ascending=False).head(40).itertuples()))
-    print("各板块成分数:", "；".join(f"{n}:{len(v)}" for n, v in sorted(mem.values(), key=lambda x: -len(x[1]))[:60]))
-
-    print("\n=== 抓取新浪个股资料页，看能否取到所属行业（8只未覆盖股）")
-    for r in miss.sort_values("amount", ascending=False).head(8).itertuples():
-        for url in (f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpOtherInfo/stockid/{r.code}/menu_num/2.phtml",
-                    f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpInfo/stockid/{r.code}.phtml"):
-            try:
-                t = requests.get(url, headers=fetch_sina.UA, timeout=20)
-                t.encoding = "gb2312"
-                body = t.text
-                hits = re.findall(r"[^<>\s]{0,12}行业[^<>\s]{0,24}", body)[:6]
-                print(f"  {r.name}({r.code}) HTTP{t.status_code} 长度{len(body)} 行业相关: {hits}")
-            except Exception as e:  # noqa: BLE001
-                print(f"  {r.name}({r.code}) 失败 {type(e).__name__} {str(e)[:60]}")
-            time.sleep(0.3)
-    print("请求统计:", fetch_sina.STATS)
+    for code in ("688825", "600938", "688072", "300750", "600519", "000001"):
+        t = requests.get(URL.format(code), headers=fetch_sina.UA, timeout=20)
+        t.encoding = "gb2312"
+        html = t.text
+        print(f"\n===== {code} HTTP{t.status_code} 长度{len(html)}")
+        for key in ("所属行业板块", "备注：此为申万行业分类"):
+            i = html.find(key)
+            if i < 0:
+                print(f"  [{key}] 未找到")
+                continue
+            seg = html[max(0, i - 200): i + 1200]
+            txt = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "|", seg))
+            txt = re.sub(r"(\| ?)+", "| ", txt)
+            print(f"  [{key}] 附近文本: {txt[:700]}")
+        time.sleep(0.5)
+    # 速度测试：连续取 20 只
+    t0 = time.time(); ok = 0
+    for code in ("600000", "600004", "600006", "600007", "600008", "600009", "600010", "600011", "600012", "600015",
+                 "000002", "000004", "000006", "000007", "000008", "000009", "000010", "000011", "000012", "000014"):
+        try:
+            requests.get(URL.format(code), headers=fetch_sina.UA, timeout=20); ok += 1
+        except Exception:  # noqa: BLE001
+            pass
+    print(f"\n连续请求 20 只：成功 {ok}，用时 {time.time()-t0:.1f}s")
